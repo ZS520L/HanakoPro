@@ -155,12 +155,21 @@ Server 以独立 Node.js 进程运行（由 Electron spawn 或独立启动），
 
 ## 开发
 
+### 源码运行要求
+
+- Node.js 22 LTS 或更高版本（`package.json` 要求 `>=20`）。
+- npm 10 或更高版本。
+- Windows 建议安装 Visual Studio Build Tools 2022，并勾选 C++ 桌面开发组件，用于编译 `better-sqlite3`、`node-pty` 等原生依赖。
+- 首次运行前需要准备可用的模型提供商配置，启动后在引导页填写 API key、base URL 和模型。
+
+### 从源码启动
+
 ```bash
 # 安装依赖
-npm install
+npm ci
 
-# Electron 启动（自动构建 renderer）
-npm start
+# Electron 开发版启动（自动构建 preload / renderer / theme）
+npm run start:dev
 
 # Vite HMR 开发（需先运行 npm run dev:renderer）
 npm run start:vite
@@ -170,6 +179,35 @@ npm test
 
 # 类型检查
 npm run typecheck
+```
+
+如果启动时日志里出现 `better-sqlite3.node was compiled against a different Node.js version`，说明本机 Node / Electron ABI 与原生模块不匹配，重新编译即可：
+
+```bash
+npm rebuild better-sqlite3
+```
+
+如果终端相关能力异常，也可以重建 `node-pty`：
+
+```bash
+npm rebuild node-pty
+```
+
+### 打包说明
+
+Windows 打包命令：
+
+```bash
+npm run dist:win
+```
+
+Windows 安装包构建会引用 `vendor/git-portable`。该目录体积较大，源码仓库默认不包含它；如果你要从源码自行打包 Windows 安装包，需要先准备 `vendor/git-portable`，或按自己的分发方式调整 `package.json` 中的 `build.win.extraResources`。
+
+如果打包过程中遇到 Node.js heap out of memory，可以临时提高 Node 堆内存后重新执行构建：
+
+```bash
+$env:NODE_OPTIONS="--max-old-space-size=8192"
+npm run dist:win
 ```
 
 ## 许可证
