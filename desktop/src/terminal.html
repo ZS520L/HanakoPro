@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: file:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:;">
+    <title>Hanako Terminal</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="themes/warm-paper.css" id="themeSheet">
+    <style>
+        html, body { height: 100%; margin: 0; }
+        body {
+            background-color: #1e1e1e;
+            color: #d4d4d4;
+            overflow: hidden;
+        }
+        #react-root {
+            position: fixed;
+            inset: 0;
+        }
+        /* Windows/Linux 标题栏占位 */
+        html[data-platform="win32"] #react-root,
+        html[data-platform="linux"] #react-root {
+            top: 32px;
+        }
+        .titlebar-minimal {
+            position: fixed;
+            top: 0; left: 0; right: 0;
+            height: 32px;
+            background: #2b2b2b;
+            -webkit-app-region: drag;
+            z-index: 100;
+            border-bottom: 1px solid #1a1a1a;
+        }
+        html[data-platform="darwin"] .titlebar-minimal,
+        html[data-platform="web"] .titlebar-minimal {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="react-root"></div>
+    <div class="titlebar titlebar-minimal"></div>
+
+    <script src="lib/theme.js"></script>
+    <script src="modules/platform.js"></script>
+    <script type="module" src="./terminal-window-entry.tsx"></script>
+</body>
+</html>

@@ -1,0 +1,89 @@
+{
+  "total_gaps": 14,
+  "gaps": [
+    {
+      "type": "热度缺口",
+      "description": "该领域论文从 2024 年 6 篇增至 2025 年 14 篇 (2.3x) — 热点上升期，快速入场窗口",
+      "confidence": 0.7,
+      "source": "时间趋势分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Complex & Intelligent Systems' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Expert Systems with Applications' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'IEEE Transactions on Big Data' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'IEEE Transactions on Computational Social Systems' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'IEEE Transactions on Consumer Electronics' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'IEEE Transactions on Neural Networks and Learning Systems' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Information Sciences' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Journal Of Big Data' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Journal of Signal Processing Systems' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Machine Learning' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Process Safety and Environmental Protection' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'Society for Industrial and Applied Mathematics eBooks' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    },
+    {
+      "type": "覆盖缺口",
+      "description": "venue 'The Journal of Supercomputing' 仅有 1 篇论文 — 该会议/期刊在该领域活跃度低",
+      "confidence": 0.6,
+      "source": "venue 分布分析"
+    }
+  ]
+}

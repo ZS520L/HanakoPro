@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' file:;">
+    <title>Hanako</title>
+    <style>
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        html, body { height: 100%; overflow: hidden; }
+        body {
+            font-family: 'Songti SC', 'Georgia', serif;
+            background: #F4F0E4;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            -webkit-font-smoothing: antialiased;
+            -webkit-app-region: drag;
+            animation: fadeIn 0.3s ease-out;
+        }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .splash-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 1.5rem;
+        }
+        .splash-avatar {
+            width: 72px; height: 72px;
+            border-radius: 50%;
+            object-fit: cover;
+            pointer-events: none;
+            user-select: none;
+        }
+        .splash-text-row {
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            justify-content: center;
+        }
+        .splash-text {
+            font-size: 0.82rem;
+            color: #8E9196;
+            letter-spacing: 0.02em;
+            line-height: 1.5;
+            transition: opacity 0.5s ease;
+            white-space: nowrap;
+        }
+        .splash-text.switching { opacity: 0; }
+        .splash-sakura {
+            display: inline-flex;
+            align-items: center;
+            font-size: 1.05rem;
+            color: var(--splash-accent, #537D96);
+            flex-shrink: 0;
+            line-height: 1;
+            animation: spin 4s linear infinite;
+        }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body>
+    <div id="react-root"></div>
+    <script src="modules/platform.js"></script>
+    <script type="module" src="./splash-main.tsx"></script>
+</body>
+</html>

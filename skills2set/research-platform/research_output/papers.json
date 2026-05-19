@@ -1,0 +1,497 @@
+{
+  "query": "graph contrastive learning anomaly detection",
+  "year_range": [
+    2024,
+    2025
+  ],
+  "timestamp": "2026-05-17T18:31:06.766141",
+  "total_found": 20,
+  "oa_count": 5,
+  "oa_ratio": "5/20 (25%)",
+  "has_doi": 20,
+  "has_arxiv": 0,
+  "papers": [
+    {
+      "title": "Federated Graph Anomaly Detection via Contrastive Self-Supervised Learning",
+      "doi": "10.1109/tnnls.2024.3414326",
+      "arxiv_id": "",
+      "year": 2024,
+      "venue": "IEEE Transactions on Neural Networks and Learning Systems",
+      "citation_count": 32,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Xiangjie Kong",
+        "Wenyi Zhang",
+        "Hui Wang",
+        "Mingliang Hou",
+        "Xin Chen",
+        "Xiaoran Yan",
+        "Sajal K. Das"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4399849661",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Unsupervised Anomaly Detection on Attributed Networks With Graph Contrastive Learning for Consumer Electronics Security",
+      "doi": "10.1109/tce.2024.3355122",
+      "arxiv_id": "",
+      "year": 2024,
+      "venue": "IEEE Transactions on Consumer Electronics",
+      "citation_count": 18,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Bo Xu",
+        "J. Wang",
+        "Zhehuan Zhao",
+        "Hongfei Lin",
+        "Feng Xia"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4390956528",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Multi-view discriminative edge heterophily contrastive learning network for attributed graph anomaly detection",
+      "doi": "10.1016/j.eswa.2024.124460",
+      "arxiv_id": "",
+      "year": 2024,
+      "venue": "Expert Systems with Applications",
+      "citation_count": 10,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Wangyu Jin",
+        "Huifang Ma",
+        "Yingyue Zhang",
+        "Zhixin Li",
+        "Liang Chang"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4399557430",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Synthesizing global and local perspectives in contrastive learning for graph anomaly detection",
+      "doi": "10.1016/j.knosys.2025.113289",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Knowledge-Based Systems",
+      "citation_count": 9,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Qiqi Yang",
+        "Hang Yu",
+        "Zhengyang Liu",
+        "Pengbo Li",
+        "Xue Chen",
+        "Xiangfeng Luo"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4408286565",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Revisiting Graph Contrastive Learning on Anomaly Detection: A Structural Imbalance Perspective",
+      "doi": "10.1609/aaai.v39i12.33415",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Proceedings of the AAAI Conference on Artificial Intelligence",
+      "citation_count": 8,
+      "is_oa": true,
+      "oa_url": "https://ojs.aaai.org/index.php/AAAI/article/download/33415/35570",
+      "pdf_url": "https://content.openalex.org/works/W4409365221.pdf",
+      "abstract": "",
+      "authors": [
+        "Yiming Xu",
+        "Zhenming Peng",
+        "Bin Shi",
+        "Hua Xu",
+        "Bo Dong",
+        "Song Wang",
+        "Chen Chen"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4409365221",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Graph Anomaly Detection via Multiscale Contrastive Self-Supervised Learning From Local to Global",
+      "doi": "10.1109/tcss.2024.3457161",
+      "arxiv_id": "",
+      "year": 2024,
+      "venue": "IEEE Transactions on Computational Social Systems",
+      "citation_count": 8,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Xiaofeng Wang",
+        "Shuaiming Lai",
+        "Shuailei Zhu",
+        "Yuntao Chen",
+        "Laishui Lv",
+        "Yuanyuan Qi"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4402978397",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Graph Anomaly Detection via Diffusion Enhanced Multi-View Contrastive Learning",
+      "doi": "10.1016/j.knosys.2025.113093",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Knowledge-Based Systems",
+      "citation_count": 7,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Xiangjie Kong",
+        "Jin Liu",
+        "Huan Li",
+        "Chenwei Zhang",
+        "Jiaxin Du",
+        "Dongyan Guo",
+        "Guojiang Shen"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4407346743",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Towards accurate anomaly detection for cloud system via graph-enhanced contrastive learning",
+      "doi": "10.1007/s40747-024-01659-x",
+      "arxiv_id": "",
+      "year": 2024,
+      "venue": "Complex & Intelligent Systems",
+      "citation_count": 7,
+      "is_oa": true,
+      "oa_url": "https://link.springer.com/content/pdf/10.1007/s40747-024-01659-x.pdf",
+      "pdf_url": "https://content.openalex.org/works/W4404291838.pdf",
+      "abstract": "",
+      "authors": [
+        "Zhen Zhang",
+        "Zhe Zhu",
+        "Xu Chen",
+        "Jinyu Zhang",
+        "Shaohua Xu"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4404291838",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Anomaly Detection via Graph Contrastive Learning",
+      "doi": "10.1137/1.9781611978520.6",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Society for Industrial and Applied Mathematics eBooks",
+      "citation_count": 6,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Emre Sefer"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4409983230",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "An adversarial variational graph autoencoder with contrastive learning for robust anomaly detection in large scale attributed networks",
+      "doi": "10.1186/s40537-025-01342-z",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Journal Of Big Data",
+      "citation_count": 5,
+      "is_oa": true,
+      "oa_url": "https://doi.org/10.1186/s40537-025-01342-z",
+      "pdf_url": "https://doi.org/10.1186/s40537-025-01342-z",
+      "abstract": "",
+      "authors": [
+        "Wasim Khan",
+        "Nadhem Ebrahim",
+        "Mohammad Ishrat",
+        "Hasan Alkahtani",
+        "Theyazn H. H. Aldhyani"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4417304101",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Advancing unsupervised graph anomaly detection: A multi-level contrastive learning framework to mitigate local consistency deception",
+      "doi": "10.1016/j.neucom.2025.130507",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Neurocomputing",
+      "citation_count": 5,
+      "is_oa": true,
+      "oa_url": "https://doi.org/10.1016/j.neucom.2025.130507",
+      "pdf_url": "https://doi.org/10.1016/j.neucom.2025.130507",
+      "abstract": "",
+      "authors": [
+        "W. Wu",
+        "Yijun Gu"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4410773091",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "HE-GAD: a behavior-enhanced contrastive learning framework for graph anomaly detection",
+      "doi": "10.1007/s10994-025-06809-x",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Machine Learning",
+      "citation_count": 3,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Ling Zheng",
+        "Qi Song",
+        "Yihan Wang",
+        "Zhitao Wang",
+        "Xiangyang Li"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4411370299",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "GDCMAD: Graph-based dual-contrastive representation learning for multivariate time series anomaly detection",
+      "doi": "10.1016/j.ins.2025.122790",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Information Sciences",
+      "citation_count": 3,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Sheng He",
+        "Wenxuan He",
+        "Mingjing Du",
+        "Xiang Jiang",
+        "Yongquan Dong"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4415355174",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Graph contrastive learning of modeling global-local interactions under hierarchical strategy: Application in anomaly detection",
+      "doi": "10.1016/j.psep.2025.106871",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Process Safety and Environmental Protection",
+      "citation_count": 3,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Weiwei Guo",
+        "Yan Wang",
+        "Le Zhou",
+        "Mingwei Jia",
+        "Yiliu Liu"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4407165037",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Dynamic graph contrastive learning for multivariate time series anomaly detection",
+      "doi": "10.1007/s11227-025-07455-9",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "The Journal of Supercomputing",
+      "citation_count": 2,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Anqin Zhang",
+        "Pengzhou Chen",
+        "Yufei Gu",
+        "Ting Zhang"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4411053784",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Distribution Network Anomaly Detection Based on Graph Contrastive Learning",
+      "doi": "10.1007/s11265-024-01940-9",
+      "arxiv_id": "",
+      "year": 2024,
+      "venue": "Journal of Signal Processing Systems",
+      "citation_count": 2,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Mingjun Feng",
+        "Caiyun Liu",
+        "Yan Sun",
+        "Yidong Wu",
+        "Bo Li"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4405297161",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Rethinking Contrastive Learning in Graph Anomaly Detection: A Clean-View Perspective",
+      "doi": "10.24963/ijcai.2025/335",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "",
+      "citation_count": 2,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Di Jin",
+        "Jingyi Cao",
+        "Xiaobao Wang",
+        "Bingdao Feng",
+        "Dongxiao He",
+        "Longbiao Wang",
+        "Jianwu Dang"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4414360058",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Federated Graph Anomaly Detection Through Contrastive Learning with Global Negative Pairs",
+      "doi": "10.1609/aaai.v39i20.35458",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Proceedings of the AAAI Conference on Artificial Intelligence",
+      "citation_count": 2,
+      "is_oa": true,
+      "oa_url": "https://ojs.aaai.org/index.php/AAAI/article/download/35458/37613",
+      "pdf_url": "https://content.openalex.org/works/W4409363394.pdf",
+      "abstract": "",
+      "authors": [
+        "Nannan Wu",
+        "Yi Zhao",
+        "Hongdou Dong",
+        "Kai Xi",
+        "Wei Yu",
+        "Wenjun Wang"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4409363394",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "Graph-Enhanced Multi-Scale Contrastive Learning for Graph Anomaly Detection With Adaptive Diffusion Models",
+      "doi": "10.1109/tbdata.2025.3566619",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "IEEE Transactions on Big Data",
+      "citation_count": 2,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Chunjing Xiao",
+        "Yao Tong",
+        "Jiahui Lu",
+        "Yuxia Xue",
+        "Wenxin Tai",
+        "Zhangtao Cheng",
+        "Fan Zhou"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W4410027506",
+      "sources": [
+        "openalex"
+      ]
+    },
+    {
+      "title": "MCLASt: Multi-hierarchy contrastive learning graph anomaly detection with structure-awareness",
+      "doi": "10.1016/j.neucom.2025.132480",
+      "arxiv_id": "",
+      "year": 2025,
+      "venue": "Neurocomputing",
+      "citation_count": 2,
+      "is_oa": false,
+      "oa_url": "",
+      "pdf_url": "",
+      "abstract": "",
+      "authors": [
+        "Wenxin Zhang",
+        "Cuicui Luo"
+      ],
+      "source": "openalex",
+      "openalex_id": "https://openalex.org/W7116312913",
+      "sources": [
+        "openalex"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,128 @@
+.root {
+  position: relative;
+  max-width: 240px;
+}
+
+.trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  font-family: inherit;
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text);
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input, 4px);
+  padding: 0.45rem 0.65rem;
+  cursor: pointer;
+  text-align: left;
+  transition: border-color var(--duration-slow) var(--ease-out);
+}
+
+.trigger:hover,
+.trigger:focus {
+  border-color: var(--accent);
+}
+
+.trigger:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
+.placeholder {
+  color: var(--text-muted);
+}
+
+.arrow {
+  flex-shrink: 0;
+  font-size: 0.9rem;
+  color: var(--text-muted);
+  margin-left: var(--space-sm);
+  transition: transform var(--duration-slow);
+}
+
+.open .arrow {
+  transform: rotate(180deg);
+}
+
+.popup {
+  display: flex;
+  position: fixed;
+  top: auto;
+  left: auto;
+  width: 100%;
+  min-width: 180px;
+  max-height: 240px;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-input, 4px);
+  z-index: 9999;
+  margin-top: 0;
+  overflow-y: auto;
+  flex-direction: column;
+  animation: hana-fade-up var(--duration-fast) var(--ease-out);
+  padding: var(--space-xs) 0;
+  -webkit-app-region: no-drag;
+}
+
+.option {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  padding: 0.45rem 0.65rem;
+  font-family: inherit;
+  font-size: 0.9rem;
+  color: var(--text-light);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  transition: background var(--duration-fast);
+}
+
+.option:hover {
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+}
+
+.selected {
+  color: var(--accent);
+  font-weight: 600;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+}
+
+.disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.disabled:hover {
+  background: none;
+}
+
+.groupHeader {
+  padding: 0.35rem 0.65rem 0.15rem;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  letter-spacing: 0.03em;
+  user-select: none;
+}
+
+:global(body.paper-texture) .trigger,
+:global(body.paper-texture) .popup {
+  background-image: url(../../assets/textures/rice-paper.png);
+  background-repeat: repeat;
+  background-size: 160px;
+  background-attachment: fixed;
+  background-blend-mode: var(--paper-texture-card-blend-mode);
+}

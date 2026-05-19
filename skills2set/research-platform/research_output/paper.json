@@ -1,0 +1,40 @@
+{
+  "title_candidates": [
+    "Towards Robust Graph Anomaly Detection via Contrastive Representation Learning",
+    "Rethinking Graph Contrastive Learning for Anomaly Detection: A Electronics Study",
+    "Bridging the Gap: Contrastive Self-Supervised Learning for Real-World Graph Anomaly Detection"
+  ],
+  "paper_stats": {
+    "referenced_papers": 20,
+    "top_cited": [
+      {
+        "title": "Federated Graph Anomaly Detection via Contrastive Self-Supervised Learning",
+        "cites": 32,
+        "year": 2024
+      },
+      {
+        "title": "Unsupervised Anomaly Detection on Attributed Networks With Graph Contrastive Learning for Consumer Electronics Security",
+        "cites": 18,
+        "year": 2024
+      },
+      {
+        "title": "Multi-view discriminative edge heterophily contrastive learning network for attributed graph anomaly detection",
+        "cites": 10,
+        "year": 2024
+      },
+      {
+        "title": "Synthesizing global and local perspectives in contrastive learning for graph anomaly detection",
+        "cites": 9,
+        "year": 2025
+      },
+      {
+        "title": "Graph Anomaly Detection via Multiscale Contrastive Self-Supervised Learning From Local to Global",
+        "cites": 8,
+        "year": 2024
+      }
+    ]
+  },
+  "status": "draft",
+  "output_file": "research_output/paper.tex",
+  "message": "论文 LaTeX 已生成。在实际部署中，此脚本会从 UKG 和实验结果中提取数据填入 LaTeX 模板并编译 PDF。"
+}

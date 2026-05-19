@@ -1,0 +1,486 @@
+/**
+ * PreferencesManager — 全局 preferences.json 读写
+ *
+ * 统一管理用户级全局配置（bridge、agent 排序等），
+ * 以及 primaryAgent 偏好。从 Engine 提取，避免 route 穿透私有字段。
+ */
+import fs from "fs";
+import path from "path";
+import {
+  approveComputerUseApp,
+  normalizeComputerUseSettings,
+  revokeComputerUseApp,
+} from "./computer-use/settings.js";
+import { normalizeSessionPermissionMode } from "./session-permission-mode.js";
+import {
+  mergeEditorTypography,
+  normalizeEditorTypography,
+} from "../shared/editor-typography.js";
+import {
+  normalizeWorkspaceUiState,
+  upsertWorkspaceUiState,
+} from "../shared/workspace-ui-state.js";
+import { normalizeWorkspacePath } from "../shared/workspace-history.js";
+
+export class PreferencesManager {
+  /**
+   * @param {object} opts
+   * @param {string} opts.userDir  - 用户数据目录（preferences.json 所在）
+   * @param {string} opts.agentsDir - agents 根目录（findFirstAgent 用）
+   */
+  constructor({ userDir, agentsDir }) {
+    this._userDir = userDir;
+    this._agentsDir = agentsDir;
+    this._path = path.join(userDir, "preferences.json");
+    this._cache = this._readFromDisk();
+  }
+
+  /** 读取全局 preferences（从内存缓存） */
+  getPreferences() {
+    return structuredClone(this._cache);
+  }
+
+  /** 写入全局 preferences（更新缓存 + 原子写磁盘） */
+  savePreferences(prefs) {
+    this._cache = structuredClone(prefs);
+    fs.mkdirSync(this._userDir, { recursive: true });
+    const tmp = this._path + ".tmp";
+    fs.writeFileSync(tmp, JSON.stringify(prefs, null, 2) + "\n", "utf-8");
+    fs.renameSync(tmp, this._path);
+  }
+
+  /** @private 从磁盘读取（仅构造时调用一次） */
+  _readFromDisk() {
+    try {
+      return JSON.parse(fs.readFileSync(this._path, "utf-8"));
+    } catch (err) {
+      if (err.code === "ENOENT") return {};
+      console.warn(`[preferences] failed to read ${this._path}: ${err.message}`);
+      return {};
+    }
+  }
+
+  // ── 内部 getter 直接读 _cache，避免 structuredClone 开销 ──
+  // 写操作使用 _mutableCopy() 获取浅拷贝，修改后 savePreferences
+
+  /** @private 获取可修改的浅拷贝（setter 专用） */
+  _mutableCopy() {
+    return { ...this._cache };
+  }
+
+  /** 读取沙盒模式偏好 */
+  getSandbox() {
+    return this._cache.sandbox !== false;
+  }
+
+  /** 保存沙盒模式偏好 */
+  setSandbox(enabled) {
+    const prefs = this._mutableCopy();
+    prefs.sandbox = typeof enabled === "string" ? enabled === "true" : !!enabled;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取沙盒内命令是否允许出站联网。默认关闭。 */
+  getSandboxNetwork() {
+    return this._cache.sandbox_network === true;
+  }
+
+  /** 保存沙盒内命令出站联网偏好。 */
+  setSandboxNetwork(enabled) {
+    const prefs = this._mutableCopy();
+    prefs.sandbox_network = typeof enabled === "string" ? enabled === "true" : !!enabled;
+    this.savePreferences(prefs);
+  }
+
+  getInlineDiff() {
+    return this._cache.inline_diff !== false;
+  }
+
+  setInlineDiff(enabled) {
+    const prefs = this._mutableCopy();
+    prefs.inline_diff = typeof enabled === "string" ? enabled === "true" : !!enabled;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取新会话默认权限模式。首次安装没有该字段时默认 ask。 */
+  getSessionPermissionModeDefault() {
+    return normalizeSessionPermissionMode({ permissionMode: this._cache.session_permission_mode_default });
+  }
+
+  /** 保存新会话默认权限模式，用于记住用户上次选择。 */
+  setSessionPermissionModeDefault(mode) {
+    const prefs = this._mutableCopy();
+    prefs.session_permission_mode_default = normalizeSessionPermissionMode(mode);
+    this.savePreferences(prefs);
+    return prefs.session_permission_mode_default;
+  }
+
+  /** 读取文件备份配置 */
+  getFileBackup() {
+    const cfg = this._cache.file_backup;
+    // 默认启用：撤回（revert）依赖 checkpoint 才能还原文件
+    if (!cfg) return { enabled: true, retention_days: 1, max_file_size_kb: 1024 };
+    return {
+      enabled: cfg.enabled !== false,
+      retention_days: cfg.retention_days || 1,
+      max_file_size_kb: cfg.max_file_size_kb || 1024,
+    };
+  }
+
+  /** 合并写入文件备份配置 */
+  setFileBackup(partial) {
+    const prefs = this._mutableCopy();
+    prefs.file_backup = { ...(prefs.file_backup || {}), ...partial };
+    this.savePreferences(prefs);
+  }
+
+  /** 读取频道系统总开关（全局，默认关闭） */
+  getChannelsEnabled() {
+    return this._cache.channels_enabled === true;
+  }
+
+  /** 保存频道系统总开关 */
+  setChannelsEnabled(enabled) {
+    const prefs = this._mutableCopy();
+    prefs.channels_enabled = !!enabled;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取 bridge 只读总开关（全局，默认关闭） */
+  getBridgeReadOnly() {
+    return this._cache.bridge?.readOnly === true;
+  }
+
+  /** 保存 bridge 只读总开关 */
+  setBridgeReadOnly(enabled) {
+    const prefs = this._mutableCopy();
+    const bridge = { ...(prefs.bridge || {}) };
+    if (enabled) bridge.readOnly = true;
+    else delete bridge.readOnly;
+    if (Object.keys(bridge).length === 0) delete prefs.bridge;
+    else prefs.bridge = bridge;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取 bridge 回复前提示总开关（全局，默认开启） */
+  getBridgeReceiptEnabled() {
+    return this._cache.bridge?.receiptEnabled !== false;
+  }
+
+  /** 保存 bridge 回复前提示总开关 */
+  setBridgeReceiptEnabled(enabled) {
+    const prefs = this._mutableCopy();
+    const bridge = { ...(prefs.bridge || {}) };
+    if (enabled === false) bridge.receiptEnabled = false;
+    else delete bridge.receiptEnabled;
+    if (Object.keys(bridge).length === 0) delete prefs.bridge;
+    else prefs.bridge = bridge;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取 Bridge 媒体临时公网 base URL。空值表示回退到启动环境变量。 */
+  getBridgeMediaPublicBaseUrl() {
+    return normalizeBridgeMediaPublicBaseUrl(this._cache.bridge?.mediaPublicBaseUrl || "");
+  }
+
+  /** 保存 Bridge 媒体临时公网 base URL。传空字符串会清除持久配置。 */
+  setBridgeMediaPublicBaseUrl(value) {
+    const normalized = normalizeBridgeMediaPublicBaseUrl(value);
+    const prefs = this._mutableCopy();
+    const bridge = { ...(prefs.bridge || {}) };
+    if (normalized) bridge.mediaPublicBaseUrl = normalized;
+    else delete bridge.mediaPublicBaseUrl;
+    if (Object.keys(bridge).length === 0) delete prefs.bridge;
+    else prefs.bridge = bridge;
+    this.savePreferences(prefs);
+    return normalized;
+  }
+
+  /** 读取 Computer Use 全局设置（provider 选择、批准列表、平台策略） */
+  getComputerUseSettings() {
+    return normalizeComputerUseSettings(this._cache.computer_use || {});
+  }
+
+  /** 合并写入 Computer Use 全局设置 */
+  setComputerUseSettings(partial) {
+    const prefs = this._mutableCopy();
+    prefs.computer_use = normalizeComputerUseSettings({
+      ...(prefs.computer_use || {}),
+      ...(partial || {}),
+    });
+    this.savePreferences(prefs);
+    return prefs.computer_use;
+  }
+
+  /** 批准 Computer Use 控制某个 provider 下的 app/window scope */
+  approveComputerUseApp(approval) {
+    const prefs = this._mutableCopy();
+    prefs.computer_use = approveComputerUseApp(prefs.computer_use || {}, approval);
+    this.savePreferences(prefs);
+    return prefs.computer_use;
+  }
+
+  /** 撤销 Computer Use app 批准 */
+  revokeComputerUseApp(approval) {
+    const prefs = this._mutableCopy();
+    prefs.computer_use = revokeComputerUseApp(prefs.computer_use || {}, approval);
+    this.savePreferences(prefs);
+    return prefs.computer_use;
+  }
+
+  /** 读取自学技能配置（全局，跨 agent） */
+  getLearnSkills() {
+    const cfg = this._cache.learn_skills;
+    if (!cfg) return { enabled: true, safety_review: true };
+    return cfg;
+  }
+
+  /** 合并写入自学技能配置 */
+  setLearnSkills(partial) {
+    const prefs = this._mutableCopy();
+    prefs.learn_skills = { ...(prefs.learn_skills || {}), ...partial };
+    this.savePreferences(prefs);
+  }
+
+  /** 读取语言偏好（全局） */
+  getLocale() {
+    return this._cache.locale || "";
+  }
+
+  /** 保存语言偏好 */
+  setLocale(locale) {
+    const prefs = this._mutableCopy();
+    prefs.locale = locale || "";
+    this.savePreferences(prefs);
+  }
+
+  /** 读取编辑器排版偏好 */
+  getEditor() {
+    return normalizeEditorTypography(this._cache.editor);
+  }
+
+  /** 合并写入编辑器排版偏好 */
+  setEditor(partial) {
+    const prefs = this._mutableCopy();
+    prefs.editor = mergeEditorTypography(prefs.editor, partial);
+    this.savePreferences(prefs);
+    return prefs.editor;
+  }
+
+  /** 读取指定工作区的 UI 状态（文件夹展开、预览 tabs 等）。 */
+  getWorkspaceUiState(workspaceRoot) {
+    const workspace = normalizeWorkspacePath(workspaceRoot);
+    if (!workspace) return null;
+    const state = normalizeWorkspaceUiState(this._cache.workspace_ui_state || {});
+    return structuredClone(state.workspaces[workspace] || null);
+  }
+
+  /** 写入指定工作区的 UI 状态，状态按 workspace root keyed。 */
+  setWorkspaceUiState(workspaceRoot, entry) {
+    const workspace = normalizeWorkspacePath(workspaceRoot);
+    if (!workspace) return null;
+    const prefs = this._mutableCopy();
+    prefs.workspace_ui_state = upsertWorkspaceUiState(
+      prefs.workspace_ui_state || {},
+      workspace,
+      entry,
+    );
+    this.savePreferences(prefs);
+    return structuredClone(prefs.workspace_ui_state.workspaces[workspace] || null);
+  }
+
+  /** 读取时区偏好（全局） */
+  getTimezone() {
+    return this._cache.timezone || "";
+  }
+
+  /** 保存时区偏好 */
+  setTimezone(tz) {
+    const prefs = this._mutableCopy();
+    prefs.timezone = tz || "";
+    this.savePreferences(prefs);
+  }
+
+  /** 读取 thinking level 偏好（用户全局，跨 agent / session） */
+  getThinkingLevel() {
+    return this._cache.thinking_level || "auto";
+  }
+
+  /** 保存 thinking level 偏好 */
+  setThinkingLevel(level) {
+    const prefs = this._mutableCopy();
+    prefs.thinking_level = level;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取外部技能扫描路径 */
+  getExternalSkillPaths() {
+    return this._cache.external_skill_paths || [];
+  }
+
+  /** 保存外部技能扫描路径 */
+  setExternalSkillPaths(paths) {
+    const prefs = this._mutableCopy();
+    prefs.external_skill_paths = paths;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取 OAuth 自定义模型 { provider: ["model-id", ...] }
+   *  返回浅拷贝：调用方（如 auth.js）会 push() 到子数组再保存，
+   *  必须隔离以免脏写 _cache */
+  getOAuthCustomModels() {
+    const src = this._cache.oauth_custom_models;
+    if (!src) return {};
+    const copy = {};
+    for (const [k, v] of Object.entries(src)) {
+      copy[k] = Array.isArray(v) ? [...v] : v;
+    }
+    return copy;
+  }
+
+  /** 设置某个 OAuth provider 的自定义模型列表 */
+  setOAuthCustomModels(provider, modelIds) {
+    const prefs = this._mutableCopy();
+    if (!prefs.oauth_custom_models) prefs.oauth_custom_models = {};
+    if (modelIds.length === 0) {
+      delete prefs.oauth_custom_models[provider];
+    } else {
+      prefs.oauth_custom_models[provider] = modelIds;
+    }
+    this.savePreferences(prefs);
+  }
+
+  /** 读取是否允许 full-access 社区插件运行 */
+  getAllowFullAccessPlugins() {
+    return this._cache.allow_full_access_plugins || false;
+  }
+
+  /** 保存是否允许 full-access 社区插件运行 */
+  setAllowFullAccessPlugins(value) {
+    const prefs = this._mutableCopy();
+    prefs.allow_full_access_plugins = !!value;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取 Agent 插件开发工具开关（全局，默认关闭） */
+  getPluginDevToolsEnabled() {
+    return this._cache.plugin_dev_tools?.enabled === true;
+  }
+
+  /** 保存 Agent 插件开发工具开关 */
+  setPluginDevToolsEnabled(value) {
+    const prefs = this._mutableCopy();
+    prefs.plugin_dev_tools = {
+      ...(prefs.plugin_dev_tools || {}),
+      enabled: value === true,
+    };
+    this.savePreferences(prefs);
+    return prefs.plugin_dev_tools.enabled;
+  }
+
+  /** 读取用户手动禁用的插件 ID 列表 */
+  getDisabledPlugins() {
+    return this._cache.disabled_plugins || [];
+  }
+
+  /** 保存用户手动禁用的插件 ID 列表 */
+  setDisabledPlugins(list) {
+    const prefs = this._mutableCopy();
+    prefs.disabled_plugins = Array.isArray(list) ? list : [];
+    this.savePreferences(prefs);
+  }
+
+  /** 读取插件 UI 偏好（hiddenWidgets / hiddenTabs / tabOrder） */
+  getPluginUiPrefs() {
+    const raw = this._cache.plugin_ui;
+    return {
+      hiddenWidgets: Array.isArray(raw?.hiddenWidgets) ? raw.hiddenWidgets : [],
+      hiddenTabs: Array.isArray(raw?.hiddenTabs) ? raw.hiddenTabs : [],
+      tabOrder: Array.isArray(raw?.tabOrder) ? raw.tabOrder : [],
+    };
+  }
+
+  /** 合并写入插件 UI 偏好 */
+  setPluginUiPrefs(partial) {
+    const prefs = this._mutableCopy();
+    const current = prefs.plugin_ui || {};
+    const merged = { ...current };
+    if (Array.isArray(partial.hiddenWidgets)) merged.hiddenWidgets = partial.hiddenWidgets;
+    if (Array.isArray(partial.hiddenTabs)) merged.hiddenTabs = partial.hiddenTabs;
+    if (Array.isArray(partial.tabOrder)) merged.tabOrder = partial.tabOrder;
+    prefs.plugin_ui = merged;
+    this.savePreferences(prefs);
+    return this.getPluginUiPrefs();
+  }
+
+  /** 读取更新通道偏好："stable" | "beta" */
+  getUpdateChannel() {
+    return this._cache.update_channel || "stable";
+  }
+
+  /** 保存更新通道偏好 */
+  setUpdateChannel(channel) {
+    const prefs = this._mutableCopy();
+    prefs.update_channel = channel === "beta" ? "beta" : "stable";
+    this.savePreferences(prefs);
+  }
+
+  /** 读取"自动检查更新"开关：默认 true */
+  getAutoCheckUpdates() {
+    return this._cache.auto_check_updates !== false;
+  }
+
+  /** 保存"自动检查更新"开关 */
+  setAutoCheckUpdates(value) {
+    const prefs = this._mutableCopy();
+    prefs.auto_check_updates = value !== false;
+    this.savePreferences(prefs);
+  }
+
+  /** 读取 primary agent ID */
+  getPrimaryAgent() {
+    return this._cache.primaryAgent || null;
+  }
+
+  /** 保存 primary agent ID */
+  savePrimaryAgent(agentId) {
+    const prefs = this._mutableCopy();
+    prefs.primaryAgent = agentId;
+    this.savePreferences(prefs);
+  }
+
+  /**
+   * 找到 agents/ 目录下第一个合法的 agent
+   * @returns {string|null}
+   */
+  findFirstAgent() {
+    try {
+      const entries = fs.readdirSync(this._agentsDir, { withFileTypes: true });
+      for (const entry of entries) {
+        if (!entry.isDirectory()) continue;
+        if (fs.existsSync(path.join(this._agentsDir, entry.name, "config.yaml"))) {
+          return entry.name;
+        }
+      }
+    } catch {}
+    return null;
+  }
+}
+
+function normalizeBridgeMediaPublicBaseUrl(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  let parsed;
+  try {
+    parsed = new URL(raw);
+  } catch {
+    throw new Error("bridge media public base URL must be a valid URL");
+  }
+  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+    throw new Error("bridge media public base URL must use http or https");
+  }
+  if (parsed.search || parsed.hash) {
+    throw new Error("bridge media public base URL must not include query or hash");
+  }
+  return raw.replace(/\/+$/, "");
+}

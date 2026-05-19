@@ -1,0 +1,2156 @@
+/* ========================================
+   Chat — CSS Module
+   消息气泡、MOOD、Cron 确认、Compaction、工具调用、
+   文件输出卡片、浏览器截图、Xing 反省卡片
+   ======================================== */
+
+/* ── 消息组 ── */
+
+.messageGroup {
+    display: flex;
+    flex-direction: column;
+    --slide-y: 8px;
+    animation: hana-fade-up var(--duration-slow) var(--ease-out);
+}
+
+.messageGroup:first-child .avatarRow {
+    margin-top: 0;
+}
+
+.messageGroupUser {
+    align-items: flex-end;
+    position: relative;
+}
+
+.messageGroupAssistant {
+    align-items: flex-start;
+    padding-left: var(--space-sm);
+    margin-left: 2px;
+    position: relative;
+}
+
+/* 头像行 */
+.avatarRow {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    margin-top: var(--space-lg);
+    margin-bottom: 0.2rem;
+}
+
+.avatarRowUser {
+    flex-direction: row-reverse;
+}
+
+.avatar {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+}
+
+.hanaAvatar {
+    object-fit: cover;
+    pointer-events: none;
+    user-select: none;
+}
+
+.userAvatar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--accent-light);
+    font-size: 0.8rem;
+    line-height: 1;
+}
+
+.avatarName {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    letter-spacing: 0.02em;
+}
+
+/* 单条消息 */
+.message {
+    max-width: 92%;
+    min-width: 0;
+}
+
+.message + .message {
+    margin-top: var(--space-xs);
+}
+
+/* 用户消息 */
+.messageUser {
+    background: rgba(0, 0, 0, 0.045);
+    padding: var(--space-sm) var(--space-md);
+    border-radius: var(--radius-chat-card) var(--radius-chat-card) var(--radius-chat-card-inner) var(--radius-chat-card);
+    color: var(--text);
+    font-size: 0.95rem;
+    word-break: break-word;
+}
+
+.messageUser .userText p:last-child {
+    margin-bottom: 0;
+}
+
+.messageUserEditing {
+    width: min(520px, 78vw);
+    max-width: 92%;
+    padding: 0;
+    overflow: hidden;
+}
+
+.userEditTextarea {
+    display: block;
+    width: 100%;
+    min-height: 78px;
+    max-height: 240px;
+    resize: vertical;
+    box-sizing: border-box;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: var(--text);
+    font: inherit;
+    line-height: 1.65;
+    padding: var(--space-sm) var(--space-md);
+}
+
+.userActionRow {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 6px;
+    min-height: 20px;
+    margin-top: 2px;
+    padding-right: 5px;
+    color: var(--text-muted);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.messageGroupUser:hover .userActionRow,
+.userActionRow:focus-within,
+.userActionRowVisible {
+    opacity: 0.72;
+    pointer-events: auto;
+}
+
+.userActionRow:hover {
+    opacity: 1;
+}
+
+.userMessageTime {
+    font-size: 0.64rem;
+    line-height: 1;
+    color: var(--text-muted);
+    font-variant-numeric: tabular-nums;
+}
+
+.userActionBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 20px;
+    height: 20px;
+    padding: 0;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color var(--duration-instant), background var(--duration-instant), opacity var(--duration-instant);
+}
+
+.userActionBtn svg {
+    width: 12px;
+    height: 12px;
+}
+
+.userActionBtn:hover {
+    color: var(--text);
+    background: rgba(0, 0, 0, 0.06);
+}
+
+.userActionBtn:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.userActionBtnActive {
+    color: var(--accent);
+    background: transparent;
+}
+
+/* ── 助手撤回按钮行 ── */
+
+.assistantRevertRow {
+    display: flex;
+    align-items: center;
+    margin-top: 0.35rem;
+    padding-left: 0.2rem;
+}
+
+.assistantRevertBtn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.25rem 0.65rem;
+    border: 1px solid rgba(224, 108, 64, 0.25);
+    border-radius: 6px;
+    background: rgba(224, 108, 64, 0.06);
+    color: #c05030;
+    font-size: 0.72rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.assistantRevertBtn:hover {
+    background: rgba(224, 108, 64, 0.14);
+    border-color: rgba(224, 108, 64, 0.45);
+}
+
+.assistantRevertBtn:disabled {
+    opacity: 0.5;
+    cursor: default;
+}
+
+.assistantRevertBtnArmed {
+    background: rgba(224, 108, 64, 0.18);
+    border-color: rgba(224, 108, 64, 0.6);
+    animation: revertArmedPulse 0.6s ease-in-out infinite alternate;
+}
+
+@keyframes revertArmedPulse {
+    from { opacity: 1; }
+    to   { opacity: 0.7; }
+}
+
+.assistantRevertBtn svg {
+    flex-shrink: 0;
+}
+
+/* 用户附件 */
+.userAttachments {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.3rem;
+}
+
+.userAttachments:last-child {
+    margin-bottom: 0;
+}
+
+.attachCard {
+    border-radius: var(--radius-chat-card);
+    overflow: hidden;
+    cursor: pointer;
+}
+
+.attachCard:hover {
+    filter: brightness(0.96);
+}
+
+.attachImage {
+    max-width: 200px;
+    max-height: 150px;
+    background: var(--attach-bg, rgba(0, 0, 0, 0.04));
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+    object-fit: contain;
+}
+
+.attachImageWrap {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 4px;
+}
+
+.visionAuxiliaryLabel {
+    font-size: 11px;
+    line-height: 1.3;
+    color: var(--text-muted);
+}
+
+.attachImageImg {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+
+/* 助手消息 */
+.messageAssistant {
+    color: var(--hana-text);
+    font-size: 0.95rem;
+    line-height: 1.75;
+    word-break: break-word;
+    position: relative;
+}
+
+/* 助手回答正文用宋体 */
+.messageAssistant :global(.md-content) {
+    font-family: var(--font-serif);
+}
+
+/* ── Message action buttons (shared by user & assistant) ── */
+
+.msgActions {
+    position: absolute;
+    bottom: 4px;
+    right: 4px;
+    opacity: 0;
+    transition: opacity var(--duration-fast);
+    z-index: 2;
+}
+
+.msgActionsLeft {
+    left: 4px;
+    right: auto;
+}
+
+.msgActionsVisible { opacity: 1 !important; }
+
+.messageGroupAssistant:hover .msgActions,
+.messageGroupUser:hover .msgActions { opacity: 0.6; }
+.msgActions:hover { opacity: 1 !important; }
+
+.msgActionsPopover {
+    position: absolute;
+    top: 50%;
+    right: 100%;
+    transform: translateY(-50%);
+    display: flex;
+    gap: 2px;
+    background: var(--hana-bg);
+    border: 1px solid var(--hana-border);
+    border-radius: 6px;
+    padding: 2px 3px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity var(--duration-fast);
+}
+
+.msgActions:hover .msgActionsPopover {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+.msgActionsLeft .msgActionsPopover {
+    right: auto;
+    left: 100%;
+}
+
+.msgActionBtn {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    position: relative;
+    background: none;
+    border: none;
+    border-radius: 3px;
+    padding: 3px;
+    cursor: pointer;
+    color: var(--hana-text-muted);
+    line-height: 1;
+    transition: color var(--duration-instant), background var(--duration-instant);
+}
+
+.msgActionBtn:hover {
+    color: var(--hana-text);
+    background: var(--hana-border);
+}
+
+.msgActionBtn:disabled {
+    opacity: 0.3;
+    cursor: default;
+}
+
+.msgActionBtnActive {
+    color: var(--accent) !important;
+    background: rgba(var(--accent-rgb), 0.10);
+    opacity: 1;
+}
+
+.msgActionBtnActive:hover {
+    color: var(--accent) !important;
+    background: rgba(var(--accent-rgb), 0.16);
+}
+
+.msgActionBtnCopied {
+    color: var(--accent) !important;
+}
+
+.msgActionBtnRevert {
+    color: #e06c40;
+}
+
+.msgActionBtnRevert:hover {
+    color: #d05030;
+    background: rgba(224, 108, 64, 0.12);
+}
+
+.streamTailChar {
+    animation: stream-tail-fade 180ms var(--ease-out) both;
+    animation-delay: calc(var(--stream-tail-index, 0) * 14ms);
+    will-change: opacity;
+}
+
+@keyframes stream-tail-fade {
+    from {
+        opacity: 0.15;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .streamTailChar {
+        animation: none;
+    }
+}
+
+.msgActionBadge {
+    font-size: 0.6rem;
+    min-width: 14px;
+    height: 14px;
+    line-height: 14px;
+    text-align: center;
+    background: var(--accent);
+    color: #fff;
+    border-radius: 7px;
+    padding: 0 3px;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* 选中消息的视觉提示 */
+.messageGroupSelected {
+    background: var(--accent-light);
+    border-radius: 4px;
+}
+
+/* ── MOOD / PULSE / REFLECT ── */
+
+.moodWrapper {
+    --mood-accent: var(--accent);
+    margin: var(--space-xs) 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 0.8rem;
+}
+
+.moodWrapper[data-yuan="hanako"] { --mood-accent: var(--accent); }
+.moodWrapper[data-yuan="butter"]  { --mood-accent: #5BA88C; }
+.moodWrapper[data-yuan="ming"]    { --mood-accent: #8BA4B4; }
+
+.moodSummary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    cursor: pointer;
+    color: var(--mood-accent);
+    opacity: 0.6;
+    font-style: italic;
+    user-select: none;
+    list-style: none;
+}
+
+.moodSummary::-webkit-details-marker {
+    display: none;
+}
+
+.moodArrow {
+    display: inline-block;
+    font-style: normal;
+    font-size: 0.75rem;
+    transition: transform var(--duration-fast) ease;
+}
+
+.moodArrowOpen {
+    transform: rotate(90deg);
+}
+
+.moodBlock {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    border-left: 2px solid var(--mood-accent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    opacity: 0.7;
+}
+
+/* ── Cron 确认卡片 ── */
+
+.cronConfirmCard {
+    margin: var(--space-sm) 0;
+    padding: var(--space-md);
+    background: var(--bg-card, #fff);
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    font-size: 0.82rem;
+    width: fit-content;
+    max-width: 360px;
+}
+
+.cronConfirmTitle {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+}
+
+.cronConfirmMeta {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+}
+
+.cronConfirmPrompt {
+    margin-top: var(--space-xs);
+    color: var(--text-light);
+    font-size: 0.75rem;
+    font-style: italic;
+    line-height: 1.4;
+}
+
+.cronConfirmActions {
+    margin-top: var(--space-sm);
+    display: flex;
+    gap: var(--space-xs);
+}
+
+.cronConfirmBtn {
+    padding: 3px 12px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.75rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity var(--duration-fast);
+}
+
+.cronConfirmBtn:hover { opacity: 0.85; }
+.cronConfirmBtn:disabled { opacity: 0.5; cursor: default; }
+
+.cronConfirmBtnApprove {
+    background: var(--accent);
+    color: #fff;
+}
+
+.cronConfirmBtnReject {
+    background: var(--overlay-medium);
+    color: var(--text-light);
+}
+
+.cronConfirmStatus {
+    margin-top: var(--space-xs);
+    font-size: 0.75rem;
+    font-style: italic;
+}
+
+.cronConfirmStatusApproved { color: var(--green); }
+.cronConfirmStatusRejected { color: var(--text-muted); }
+
+/* ── 设置确认卡片 ── */
+
+.settingsConfirmCard {
+    margin: var(--space-md) 0;
+    padding: var(--space-lg) var(--space-lg) var(--space-md);
+    background: var(--bg-card, #fff);
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    font-size: 0.88rem;
+    min-width: 320px;
+    max-width: 420px;
+}
+
+.settingsConfirmCardDone {
+    padding: var(--space-md);
+}
+
+.settingsConfirmHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-md);
+}
+
+.settingsConfirmLabel {
+    font-weight: 600;
+    font-size: 1.35rem;
+    color: var(--text);
+}
+
+.settingsConfirmDesc {
+    color: var(--text-muted);
+    font-size: 0.78rem;
+    margin-top: 2px;
+    line-height: 1.4;
+}
+
+.settingsConfirmNote {
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    margin-top: var(--space-sm);
+}
+
+.settingsConfirmControl {
+    margin: var(--space-md) 0;
+}
+
+.settingsConfirmOptions {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: var(--overlay-light, rgba(0,0,0,0.03));
+    border-radius: var(--radius-chat-card);
+    overflow: hidden;
+    max-height: 240px;
+    overflow-y: auto;
+}
+
+.settingsConfirmOption {
+    padding: 9px 14px;
+    cursor: pointer;
+    font-size: 0.85rem;
+    font-family: inherit;
+    color: var(--hana-text);
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid var(--overlay-light, rgba(0,0,0,0.06));
+    text-align: left;
+    transition: background var(--duration-instant);
+}
+
+.settingsConfirmOption:last-child {
+    border-bottom: none;
+}
+
+.settingsConfirmOption:hover {
+    background: var(--overlay-light, rgba(0,0,0,0.04));
+}
+
+.settingsConfirmOptionSelected {
+    background: var(--accent);
+    color: #fff;
+    font-weight: 500;
+    border-bottom-color: transparent;
+}
+
+.settingsConfirmInput {
+    width: 100%;
+    padding: 8px 12px;
+    border: 1px solid var(--hana-border);
+    border-radius: var(--radius-sm);
+    background: var(--hana-bg);
+    color: var(--hana-text);
+    font-size: 0.85rem;
+    font-family: inherit;
+    box-sizing: border-box;
+}
+
+.settingsConfirmInput:focus {
+    outline: none;
+    border-color: var(--accent);
+}
+
+.settingsConfirmActions {
+    margin-top: var(--space-md);
+    display: flex;
+    justify-content: center;
+    gap: var(--space-sm);
+}
+
+.settingsConfirmBtn {
+    padding: 7px 20px;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-size: 0.82rem;
+    font-family: inherit;
+    cursor: pointer;
+    transition: opacity var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.settingsConfirmBtn:hover { opacity: 0.9; }
+
+.settingsConfirmBtnConfirm {
+    background: var(--accent);
+    color: #fff;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+}
+
+.settingsConfirmBtnConfirm:hover {
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.2);
+}
+
+.settingsConfirmBtnReject {
+    background: var(--overlay-medium);
+    color: var(--text-light);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+}
+
+.settingsConfirmStatus {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 0.92rem;
+    padding: var(--space-xs) 0;
+    color: var(--text-muted);
+}
+
+.settingsConfirmStatusConfirmed { color: var(--accent); }
+
+/* ── 工具调用折叠组 ── */
+
+.toolGroup {
+    margin: var(--space-xs) 0;
+    border-left: 2px solid var(--accent);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+    background: var(--tool-bg);
+    overflow: hidden;
+    width: fit-content;
+    max-width: 100%;
+}
+
+.toolGroupSummary {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.4rem 0.75rem;
+    font-size: 0.82rem;
+    color: var(--tool-text);
+    line-height: 1.5;
+    user-select: none;
+}
+
+.toolGroupSummaryClickable {
+    cursor: pointer;
+}
+
+.toolGroupSummaryClickable:hover {
+    background: var(--overlay-subtle);
+}
+
+.toolGroupTitle {
+    flex: 1;
+}
+
+.toolGroupArrow {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    width: 0.8em;
+    flex-shrink: 0;
+}
+
+.toolGroupContent {
+    padding: 0 0.75rem 0.3rem;
+}
+
+.toolGroupContentCollapsed {
+    display: none;
+}
+
+/* 单条工具时隐藏标题行 */
+.toolGroupSingle .toolGroupSummary {
+    display: none;
+}
+
+.toolGroupSingle .toolGroupContent {
+    padding: 0;
+}
+
+/* ── 工具调用指示器 ── */
+
+.toolIndicator {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.78rem;
+    color: var(--tool-text);
+    padding: 0.2rem 0;
+    line-height: 1.5;
+    max-width: 400px;
+}
+
+.toolGroupSingle .toolIndicator {
+    font-size: 0.82rem;
+    padding: 0.4rem 0.75rem;
+}
+
+.toolDesc {
+    flex-shrink: 0;
+}
+
+.toolDetail {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.toolDetailLink {
+    cursor: pointer;
+    transition: color var(--duration-fast);
+}
+
+.toolDetailLink:hover {
+    color: var(--accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+}
+
+.toolTag {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    background: var(--overlay-subtle);
+    padding: 0.1rem 0.4rem;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+}
+
+.toolDots {
+    display: inline-block;
+    margin-left: auto;
+    font-family: var(--font-serif);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: var(--accent);
+}
+
+.toolDots::after {
+    content: '';
+    animation: hana-typewriter-dots 1.4s steps(1, end) infinite;
+}
+
+.toolStatus {
+    margin-left: auto;
+    font-size: 0.82rem;
+}
+
+.toolStatusDone {
+    color: var(--green);
+}
+
+.toolStatusFailed {
+    color: var(--coral);
+}
+
+.toolProgressRow {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    max-width: 400px;
+    padding: 0 0 0.25rem 1.1rem;
+    color: var(--text-muted);
+    font-size: 0.68rem;
+}
+
+.toolProgressText {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.toolProgressPulse {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    animation: hana-pulse 1.2s ease-in-out infinite;
+}
+
+.liveFileWriteCard {
+    width: min(100%, 720px);
+    margin: 0.25rem 0 0.55rem;
+    overflow: hidden;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card, 10px);
+    background: var(--bg-card, var(--bg));
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.04);
+}
+
+.liveFileWriteHeader {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    min-height: 2.1rem;
+    padding: 0.35rem 0.7rem;
+    border-bottom: 1px solid var(--border);
+    color: var(--text-muted);
+    font-size: 0.82rem;
+}
+
+.liveFileWriteSpinner {
+    width: 0.78rem;
+    height: 0.78rem;
+    flex-shrink: 0;
+    border: 2px solid color-mix(in srgb, var(--text-muted) 45%, transparent);
+    border-top-color: var(--accent);
+    border-radius: 999px;
+    animation: hana-spin 0.8s linear infinite;
+}
+
+.liveFileWriteErrorIcon {
+    width: 0.68rem;
+    height: 0.68rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--coral);
+}
+
+.liveFileWriteName {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: var(--font-mono);
+    color: var(--text);
+}
+
+.liveFileWriteBadge {
+    margin-left: auto;
+    padding: 0.08rem 0.42rem;
+    border-radius: 5px;
+    background: color-mix(in srgb, var(--green) 16%, transparent);
+    color: var(--green);
+    font-size: 0.68rem;
+    font-family: var(--font-mono);
+    line-height: 1.3;
+}
+
+.liveFileWritePreview {
+    min-height: 6.2rem;
+    max-height: 15rem;
+    overflow-y: auto;
+    overflow-x: hidden;
+    scroll-behavior: auto;
+    padding: 0.55rem 0.7rem;
+    background:
+        repeating-linear-gradient(45deg, rgba(116, 165, 100, 0.055) 0 2px, transparent 2px 5px),
+        linear-gradient(180deg, rgba(116, 165, 100, 0.08), rgba(116, 165, 100, 0.035));
+    color: var(--text);
+}
+
+.liveFileWritePreview pre {
+    margin: 0;
+    font-family: var(--font-mono);
+    font-size: 0.74rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.liveFileWritePlaceholder {
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    font-style: italic;
+}
+
+.toolIndicatorClickable {
+    cursor: pointer;
+}
+
+.toolIndicatorClickable:hover {
+    background: var(--overlay-subtle);
+}
+
+.toolExpandArrow {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    margin-left: 0.3rem;
+    flex-shrink: 0;
+}
+
+.toolExpandedDetails {
+    padding: 0.4rem 0.75rem 0.5rem;
+    font-size: 0.75rem;
+    border-top: 1px solid var(--border-light, rgba(0,0,0,0.06));
+}
+
+.toolExpandedLabel {
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    margin-bottom: 0.15rem;
+}
+
+.toolExpandedLabel code {
+    color: var(--accent);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+}
+
+.toolExpandedSection {
+    margin-top: 0.35rem;
+}
+
+.toolExpandedPre {
+    margin: 0.15rem 0 0;
+    padding: 0.4rem 0.6rem;
+    background: var(--overlay-subtle, rgba(0,0,0,0.03));
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-family: var(--font-mono);
+    line-height: 1.45;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: 200px;
+    overflow-y: auto;
+    color: var(--text-primary);
+}
+
+/* ── 思考折叠块 ── */
+
+.thinkingBlock {
+    margin: var(--space-xs) 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    font-size: 0.8rem;
+}
+
+.thinkingBlockSummary {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.2rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    font-style: italic;
+    user-select: none;
+    list-style: none;
+}
+
+.thinkingBlockSummary::-webkit-details-marker {
+    display: none;
+}
+
+.thinkingBlockSummary .thinkingDots {
+    display: inline-block;
+    margin-left: 4px;
+    font-family: var(--font-serif);
+    font-weight: 700;
+    letter-spacing: 0.1em;
+}
+
+.thinkingBlockSummary .thinkingDots::after {
+    content: '';
+    animation: hana-typewriter-dots 1.4s steps(1, end) infinite;
+}
+
+.thinkingBlockArrow {
+    display: inline-block;
+    font-style: normal;
+    font-size: 0.75rem;
+    transition: transform var(--duration-fast) ease;
+}
+
+.thinkingBlockArrowOpen {
+    transform: rotate(90deg);
+}
+
+.thinkingBlockBody {
+    margin-top: var(--space-xs);
+    padding: var(--space-sm) var(--space-md);
+    color: var(--text-muted);
+    font-style: italic;
+    font-size: 0.78rem;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    border-left: 2px solid var(--border);
+    border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+}
+
+.fileWriteIntentHint {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    margin: 0.15rem 0 var(--space-xs) 1.05rem;
+    color: var(--text-muted);
+    font-size: 0.72rem;
+    font-style: italic;
+}
+
+.fileWriteIntentPulse {
+    width: 6px;
+    height: 6px;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--accent);
+    animation: hana-pulse 1.2s ease-in-out infinite;
+}
+
+/* ── 文件输出卡片 ── */
+
+.fileOutputCard {
+    display: flex;
+    align-items: center;
+    gap: var(--space-md);
+    min-width: 300px;
+    max-width: 420px;
+    margin: var(--space-sm) 0;
+    padding: 0.7rem 0.9rem;
+    background: var(--bg-card, var(--bg));
+    border: 1px solid var(--border, rgba(0,0,0,0.1));
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    overflow: hidden;
+    transition: background var(--duration-fast), border-color var(--duration-fast);
+}
+
+.fileOutputPreviewable:hover {
+    border-color: var(--text-muted, rgba(0,0,0,0.2));
+}
+
+.fileOutputExpired {
+    border-style: dashed;
+    background: var(--overlay-subtle, rgba(0,0,0,0.03));
+    box-shadow: none;
+    opacity: 0.82;
+}
+
+.fileOutputIcon {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--overlay-subtle, rgba(0,0,0,0.03));
+    border-radius: var(--radius-chat-card);
+}
+
+.fileOutputInfo {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.fileOutputName {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.fileOutputType {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+.fileOutputActions {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    margin-left: auto;
+    border: 1px solid var(--border, rgba(0,0,0,0.1));
+    border-radius: var(--radius-chat-card);
+    overflow: hidden;
+    background: var(--bg-card, var(--bg));
+}
+
+.fileOutputActionButton {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    color: var(--text-muted);
+    border: 0;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.fileOutputActionButton:hover,
+.fileOutputActionButton[aria-expanded="true"] {
+    color: var(--text);
+    background: var(--overlay-light, rgba(0,0,0,0.04));
+}
+
+.fileOutputActionButton:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+.fileOutputActionPrimary {
+    width: 31px;
+}
+
+.fileOutputActionMenuButton {
+    width: 22px;
+    border-left: 1px solid var(--border, rgba(0,0,0,0.1));
+}
+
+.fileOutputActionMenu {
+    padding: 5px 0;
+    background: var(--bg-card, var(--bg));
+    border: 1px solid var(--overlay-light);
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.07);
+    animation: hana-fade-up var(--duration-fast) var(--ease-out);
+}
+
+.fileOutputActionMenuItem {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 11px;
+    background: transparent;
+    color: var(--text);
+    border: 0;
+    font: inherit;
+    font-size: 0.72rem;
+    text-align: left;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background var(--duration-instant) var(--ease-out);
+}
+
+.fileOutputActionMenuItem:hover,
+.fileOutputActionMenuItem:focus-visible {
+    background: var(--overlay-subtle);
+    outline: none;
+}
+
+/* ── 图片输出卡片 ── */
+
+.imageOutputCard {
+    display: inline-flex;
+    flex-direction: column;
+    max-width: 100%;
+    margin: var(--space-sm) 0;
+    padding: 0.3rem;
+    background: var(--bg-card, var(--bg));
+    border: 0.5px solid var(--border, rgba(0,0,0,0.08));
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    transition: border-color var(--duration-fast);
+}
+
+.imageOutputCard:hover {
+    border-color: var(--text-muted, rgba(0,0,0,0.2));
+}
+
+.imageOutputPreview {
+    display: block;
+    max-width: 100%;
+    max-height: 450px;
+    object-fit: contain;
+    border-radius: var(--radius-chat-card-inner);
+}
+
+.imageOutputName {
+    padding: 0.35rem 0.2rem 0;
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    text-align: center;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* ── 聊天气泡中的 Legacy Artifact 兼容卡片 ── */
+
+.legacyArtifactCard {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: var(--space-xs) 0;
+    padding: 0.55rem 0.85rem;
+    background: var(--tool-bg);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-chat-card);
+    max-width: 100%;
+    cursor: pointer;
+    transition: background var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.legacyArtifactCard:hover {
+    background: var(--accent-light);
+    box-shadow: 0 2px 8px var(--shadow);
+}
+
+.legacyArtifactExpiredBadge {
+    flex-shrink: 0;
+    margin-left: var(--space-xs);
+    font-size: 0.68rem;
+    color: var(--text-muted);
+}
+
+.legacyArtifactCardIcon {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.legacyArtifactCardIcon svg {
+    width: 16px;
+    height: 16px;
+}
+
+.legacyArtifactCardInfo {
+    overflow: hidden;
+}
+
+.legacyArtifactCardTitle {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.legacyArtifactCardType {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+}
+
+/* ── 内嵌终端会话卡片 ── */
+
+.terminalCard {
+    display: flex;
+    flex-direction: column;
+    margin: 6px 0 8px;
+    max-width: 720px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-chat-card);
+    background: #1e1e1e;
+    color: #e5e5e5;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    overflow: hidden;
+    box-shadow: 0 1px 3px var(--shadow);
+}
+
+.terminalCardHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    background: rgba(255, 255, 255, 0.04);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    font-family: var(--font-family);
+}
+
+.terminalCardTitleRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+.terminalCardIcon {
+    display: inline-flex;
+    align-items: center;
+    color: #9aa0a6;
+    flex-shrink: 0;
+}
+
+.terminalCardTitle {
+    font-size: 0.78rem;
+    color: #d0d3d8;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+}
+
+.terminalCardStatus {
+    font-size: 0.7rem;
+    padding: 1px 6px;
+    border-radius: 8px;
+    flex-shrink: 0;
+}
+
+.terminalCardStatusAlive {
+    background: rgba(80, 200, 120, 0.18);
+    color: #5ad48d;
+}
+
+.terminalCardStatusDead {
+    background: rgba(160, 160, 160, 0.18);
+    color: #b8b8b8;
+}
+
+.terminalCardJump {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    background: transparent;
+    color: #9aa0a6;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background var(--duration-fast), color var(--duration-fast);
+}
+
+.terminalCardJump:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: #e5e5e5;
+}
+
+.terminalCardBody {
+    margin: 0;
+    padding: 8px 10px;
+    font-size: 0.78rem;
+    line-height: 1.45;
+    color: #d0d3d8;
+    white-space: pre-wrap;
+    word-break: break-all;
+    max-height: min(60vh, 480px);
+    overflow-y: auto;
+    background: #1e1e1e;
+}
+
+.terminalCardEmpty {
+    color: #6b7077;
+    font-style: italic;
+}
+
+.terminalCardError {
+    color: #ff8a80;
+}
+
+/* ── 浏览器截图 ── */
+
+.browserScreenshot {
+    margin: 8px 0;
+    max-width: 600px;
+}
+
+.browserScreenshot img {
+    max-width: 100%;
+    border-radius: var(--radius-chat-card);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: opacity var(--duration-fast);
+}
+
+.browserScreenshot img:hover {
+    opacity: 0.9;
+}
+
+/* ── Skill 卡片（复用 legacy artifact 样式） ── */
+
+.skillCard {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-sm);
+    margin: var(--space-xs) 0;
+    padding: 0.55rem 0.85rem;
+    background: var(--tool-bg);
+    border: 1px solid var(--accent);
+    border-radius: var(--radius-chat-card);
+    max-width: 100%;
+    cursor: pointer;
+    transition: background var(--duration-fast), box-shadow var(--duration-fast);
+}
+
+.skillCard:hover {
+    background: var(--accent-light);
+    box-shadow: 0 2px 8px var(--shadow);
+}
+
+/* ── Session Panel ── */
+
+.sessionShell {
+    --chat-scrollbar-bottom-inset: calc(var(--input-card-h, 0px) / 2);
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: calc(var(--input-card-h, 0px) / 2 + var(--space-lg));
+    overflow: hidden;
+}
+
+.sessionPanel {
+    position: absolute;
+    inset: 0;
+    overflow-y: auto;
+    padding: 76px var(--space-lg) 0;
+}
+
+/* 静默滚动条：默认 thumb 透明（track 已是 transparent），hover 或正在滚动时才显色。
+   不改宽度，避免布局抖动。is-scrolling class 由 Panel 的 scroll handler 在滚动时打上、800ms 无滚动后摘掉。 */
+.sessionPanel::-webkit-scrollbar-track {
+    margin-bottom: var(--chat-scrollbar-bottom-inset);
+}
+
+.sessionPanel::-webkit-scrollbar-thumb {
+    background: transparent;
+    transition: background var(--duration-slow) ease-out;
+}
+
+.sessionPanel:hover::-webkit-scrollbar-thumb,
+.sessionPanel.is-scrolling::-webkit-scrollbar-thumb {
+    background: rgba(128, 128, 128, 0.25);
+}
+
+.sessionMessages {
+    max-width: var(--chat-column-width);
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-sm);
+}
+
+.timelineNav {
+    position: absolute;
+    top: 76px;
+    right: 0;
+    height: 50%;
+    width: 64px;
+    z-index: 4;
+    overflow: visible;
+    --timeline-card-width: min(176px, calc(100vw - 96px));
+    --timeline-marker-right: 8px;
+    --timeline-row-height: 28px;
+    --timeline-card-pad-y: 0.375rem;
+    --timeline-marker-pad-left: 0.75rem;
+    --timeline-marker-pad-right: 0.375rem;
+    --timeline-marker-gap: 0.375rem;
+    --timeline-card-surface-outset-right: 0.25rem;
+}
+
+.timelineCard {
+    position: absolute;
+    top: 50%;
+    right: var(--timeline-marker-right);
+    width: var(--timeline-card-width);
+    height: calc(var(--timeline-visible-rows) * var(--timeline-row-height) + 2 * var(--timeline-card-pad-y));
+    max-height: calc(10 * var(--timeline-row-height) + 2 * var(--timeline-card-pad-y));
+    transform: translateY(-50%);
+    border-radius: var(--radius-chat-card);
+    pointer-events: none;
+    overflow: visible;
+}
+
+.timelineCard::before {
+    content: "";
+    position: absolute;
+    inset: 0 calc(-1 * var(--timeline-card-surface-outset-right)) 0 0;
+    border: 1px solid var(--border);
+    border-radius: inherit;
+    background: var(--bg-card, var(--bg));
+    box-shadow: 0 10px 28px var(--shadow);
+    opacity: 0;
+    transform: scale(0.985);
+    transform-origin: center;
+    transition: opacity var(--duration-fast) var(--ease-out), transform var(--duration-fast) var(--ease-out);
+    pointer-events: none;
+}
+
+.timelineList {
+    position: relative;
+    z-index: 1;
+    height: 100%;
+    padding-block: var(--timeline-card-pad-y);
+    box-sizing: border-box;
+    overflow-y: auto;
+    overflow-x: hidden;
+    overscroll-behavior: contain;
+    scrollbar-width: none;
+}
+
+.timelineList::-webkit-scrollbar {
+    display: none;
+}
+
+.timelineMarker {
+    position: relative;
+    width: 100%;
+    height: var(--timeline-row-height);
+    border: none;
+    background: transparent;
+    color: rgba(var(--accent-rgb), 0.52);
+    cursor: pointer;
+    padding: 0 var(--timeline-marker-pad-right) 0 var(--timeline-marker-pad-left);
+    opacity: 0;
+    pointer-events: none;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 24px;
+    align-items: center;
+    gap: var(--timeline-marker-gap);
+    transition: opacity var(--duration-fast) var(--ease-out), color var(--duration-instant) var(--ease-out);
+    --timeline-marker-width: 0.5em;
+}
+
+.timelineNav:hover .timelineMarker,
+.timelineNav:focus-within .timelineMarker {
+    opacity: 1;
+}
+
+.timelineNavExpanded .timelineCard,
+.timelineNavExpanded .timelineMarker,
+.timelineNavExpanded .timelineLabel {
+    pointer-events: auto;
+}
+
+.timelineNavExpanded .timelineLabel {
+    opacity: 1;
+}
+
+.timelineNavExpanded .timelineCard::before {
+    opacity: 1;
+    transform: scale(1);
+}
+
+.timelineLine {
+    position: relative;
+    justify-self: end;
+    width: var(--timeline-marker-width);
+    min-width: 0.5em;
+    max-width: 1em;
+    height: 4px;
+    border-radius: 999px;
+    background: currentColor;
+    opacity: 0.74;
+    pointer-events: auto;
+    transition: opacity var(--duration-instant) var(--ease-out);
+}
+
+.timelineLine::before {
+    content: "";
+    position: absolute;
+    inset: -12px -4px;
+}
+
+.timelineMarker:hover .timelineLine,
+.timelineMarker:focus-visible .timelineLine,
+.timelineMarkerActive .timelineLine {
+    opacity: 1;
+}
+
+.timelineMarkerActive {
+    color: var(--accent);
+}
+
+.timelineMarker:focus-visible {
+    outline: none;
+}
+
+.timelineLabel {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+    opacity: 0;
+    pointer-events: none;
+    color: var(--text-light);
+    font-family: var(--font-ui);
+    font-size: 0.7rem;
+    line-height: 1.4;
+    transition: opacity var(--duration-fast) var(--ease-out);
+}
+
+.timelineMarkerActive .timelineLabel {
+    color: var(--accent);
+}
+
+.loadMoreHint {
+    text-align: center;
+    padding: 0.5rem 0;
+    font-size: 0.75rem;
+    color: var(--text-tertiary, #999);
+    min-height: 1.5rem;
+}
+
+.sessionFooter {
+    /* 和 sessionPanel 的切点对齐：遮挡发生在输入卡片中部，同时在滚到底时额外多留约三行呼吸空间。 */
+    height: calc(var(--input-card-h, 0px) / 2 + var(--space-lg) + 8rem);
+    flex-shrink: 0;
+}
+
+/* ── Typing indicator (streaming 等待) ── */
+
+.typingIndicator {
+    padding: 0.2rem 0 0.6rem;
+    padding-left: calc(var(--space-sm) + 2px);
+    font-family: var(--font-serif);
+    font-size: 1.6rem;
+    font-weight: 700;
+    line-height: 0.6;
+    letter-spacing: 0.08em;
+    color: var(--accent);
+    --slide-y: 8px;
+    animation: hana-fade-up var(--duration-slow) var(--ease-out);
+}
+
+.typingIndicator::after {
+    content: '';
+    animation: hana-typewriter-dots 1.4s steps(1, end) infinite;
+}
+
+/* ── Scroll to bottom FAB ── */
+
+.scrollToBottomFab {
+    position: absolute;
+    bottom: 140px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 6;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    border: 1px solid var(--border-light, rgba(0,0,0,0.08));
+    background: var(--bg-card, #fff);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1), 0 0 0 1px rgba(0,0,0,0.04);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted);
+    transition: opacity var(--duration-fast), box-shadow var(--duration-fast);
+    opacity: 0.85;
+}
+
+.scrollToBottomFab:hover {
+    opacity: 1;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.15), 0 0 0 1px rgba(0,0,0,0.06);
+}
+
+.scrollToBottomFab svg {
+    display: block;
+}
+
+/* ── Subagent 实时卡片（对齐 cronConfirmCard 风格） ── */
+
+.subagentCard {
+    --subagent-preview-height: 260px;
+    margin: var(--space-sm) 0;
+    background: var(--bg-card, #fff);
+    border-radius: var(--radius-chat-card);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06), 0 0 0 1px rgba(0, 0, 0, 0.04);
+    width: 420px;
+    max-width: 90%;
+    font-size: 0.82rem;
+    overflow: hidden;
+}
+
+.subagentCardHeader {
+    display: flex;
+    align-items: stretch;
+    transition: background var(--duration-fast) ease;
+}
+
+.subagentCardHeader:hover {
+    background: rgba(0, 0, 0, 0.02);
+}
+
+.subagentCardButton {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    min-width: 0;
+}
+
+.subagentCardButton:focus-visible {
+    outline: 1px solid rgba(0, 0, 0, 0.18);
+    outline-offset: -1px;
+}
+
+.subagent-running .subagentAvatar {
+    --pulse-lo: 1;
+    --pulse-hi: 0.6;
+    animation: hana-pulse 2s ease-in-out infinite;
+}
+
+.subagentStatus {
+    font-weight: normal;
+    font-size: 0.75rem;
+    margin-left: 6px;
+    color: var(--text-muted);
+}
+
+.subagent-done .subagentStatus {
+    color: #7a9e7a;
+}
+
+.subagent-failed .subagentStatus {
+    color: #a67272;
+}
+
+.subagentAbortBtn {
+    align-self: center;
+    margin-right: 8px;
+    background: transparent;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 0.75rem;
+    padding: 2px 6px;
+    border-radius: 4px;
+    flex-shrink: 0;
+    opacity: 0;
+    transition: opacity var(--duration-fast);
+}
+
+.subagentCardHeader:hover .subagentAbortBtn {
+    opacity: 1;
+}
+
+.subagentAbortBtn:hover {
+    color: #a67272;
+    background: transparent;
+}
+
+.subagent-aborted .subagentStatus {
+    color: var(--text-muted);
+}
+
+.subagentAvatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    object-fit: cover;
+}
+
+.subagentBody {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+}
+
+.subagentName {
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 2px;
+}
+
+.subagentDisplay {
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    line-height: 1.3;
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.subagentPreviewWrap {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height var(--duration-fast) cubic-bezier(0.33, 1, 0.68, 1);
+    border-top: 1px solid transparent;
+}
+
+.subagentPreviewWrapOpen {
+    max-height: calc(var(--subagent-preview-height) + 22px);
+    border-top-color: rgba(0, 0, 0, 0.06);
+}
+
+.subagentPreviewWrapClosing {
+    border-top-color: rgba(0, 0, 0, 0.06);
+}
+
+.subagentPreviewScroll {
+    height: var(--subagent-preview-height);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    padding: 0 12px 0;
+    opacity: 0;
+    transform: translateY(-6px);
+    transition: padding var(--duration-fast) cubic-bezier(0.33, 1, 0.68, 1), opacity 140ms ease, transform var(--duration-fast) cubic-bezier(0.33, 1, 0.68, 1);
+}
+
+.subagentPreviewWrapOpen .subagentPreviewScroll,
+.subagentPreviewWrapClosing .subagentPreviewScroll {
+    padding: 10px 12px 12px;
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.subagentPreviewTranscript {
+    font-size: 0.82rem;
+}
+
+.subagentPreviewTranscript .messageGroup {
+    animation: none;
+}
+
+.subagentPreviewTranscript .messageGroupAssistant {
+    padding-left: 0;
+    margin-left: 0;
+}
+
+.subagentPreviewTranscript .avatarRow {
+    margin-top: var(--space-md);
+    margin-bottom: 0.1rem;
+    gap: 0.35rem;
+}
+
+.subagentPreviewTranscript .avatar {
+    width: 26px;
+    height: 26px;
+}
+
+.subagentPreviewTranscript .avatarName {
+    font-size: 0.68rem;
+}
+
+.subagentPreviewTranscript .message {
+    max-width: 100%;
+}
+
+.subagentPreviewTranscript .messageUser,
+.subagentPreviewTranscript .messageAssistant {
+    font-size: 0.82rem;
+}
+
+.subagentPreviewTranscript .messageAssistant {
+    line-height: 1.62;
+}
+
+.subagentIcon {
+    margin-right: 4px;
+}
+
+/* ── Inline Diff Card (Windsurf-style) ── */
+
+.diffCard {
+    display: flex;
+    flex-direction: column;
+    margin: 6px 0 8px;
+    max-width: 720px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-chat-card);
+    background: var(--bg-card, #fff);
+    overflow: hidden;
+    box-shadow: 0 1px 3px var(--shadow);
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.78rem;
+    line-height: 1.5;
+}
+
+.diffCardHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 6px 10px;
+    background: var(--bg-secondary, #f8f9fa);
+    border-bottom: 1px solid var(--border);
+    font-family: var(--font-family);
+    cursor: pointer;
+    user-select: none;
+}
+
+.diffCardTitleRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    flex: 1;
+}
+
+.diffCardIcon {
+    display: inline-flex;
+    align-items: center;
+    color: var(--text-muted, #9aa0a6);
+    flex-shrink: 0;
+}
+
+.diffCardTitle {
+    font-size: 0.78rem;
+    color: var(--text-primary, #333);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    min-width: 0;
+    cursor: pointer;
+}
+
+.diffCardTitle:hover {
+    text-decoration: underline;
+}
+
+.diffCardStats {
+    font-size: 0.72rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    color: var(--text-muted, #8b8b8b);
+    flex-shrink: 0;
+    white-space: nowrap;
+}
+
+.diffCardArrow {
+    font-size: 0.82rem;
+    color: var(--text-muted, #8b8b8b);
+    flex-shrink: 0;
+    width: 16px;
+    text-align: center;
+    transition: transform var(--duration-fast);
+}
+
+.diffCardBody {
+    max-height: min(60vh, 520px);
+    overflow-y: auto;
+    overflow-x: auto;
+}
+
+.diffHunk {
+    border-bottom: none;
+}
+
+.diffHunkSeparator {
+    padding: 2px 10px;
+    text-align: center;
+    font-size: 0.7rem;
+    color: var(--text-muted, #999);
+    background: var(--bg-secondary, #f8f9fa);
+    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
+    user-select: none;
+}
+
+.diffLine {
+    display: flex;
+    align-items: stretch;
+    min-height: 20px;
+}
+
+.diffLineCtx {
+    background: var(--bg-card, #fff);
+}
+
+.diffLineAdd {
+    background: rgba(46, 160, 67, 0.12);
+}
+
+.diffLineDel {
+    background: rgba(248, 81, 73, 0.12);
+}
+
+.diffLineNum {
+    display: inline-block;
+    width: 40px;
+    min-width: 40px;
+    padding: 0 6px;
+    text-align: right;
+    color: var(--text-muted, #999);
+    font-size: 0.7rem;
+    user-select: none;
+    flex-shrink: 0;
+    border-right: 1px solid var(--border);
+}
+
+.diffLineAdd .diffLineNum {
+    background: rgba(46, 160, 67, 0.06);
+}
+
+.diffLineDel .diffLineNum {
+    background: rgba(248, 81, 73, 0.06);
+}
+
+.diffLineSign {
+    display: inline-block;
+    width: 16px;
+    min-width: 16px;
+    text-align: center;
+    user-select: none;
+    flex-shrink: 0;
+    font-weight: 600;
+}
+
+.diffLineAdd .diffLineSign {
+    color: #2ea043;
+}
+
+.diffLineDel .diffLineSign {
+    color: #f85149;
+}
+
+.diffLineText {
+    flex: 1;
+    white-space: pre;
+    padding-right: 10px;
+    overflow: hidden;
+}
+
+/* ── highlight.js token colors (light theme, within diff card) ── */
+
+.diffCardBody :global(.hljs-keyword),
+.diffCardBody :global(.hljs-selector-tag),
+.diffCardBody :global(.hljs-built_in) {
+    color: #8250df;
+}
+
+.diffCardBody :global(.hljs-type),
+.diffCardBody :global(.hljs-title),
+.diffCardBody :global(.hljs-title.class_),
+.diffCardBody :global(.hljs-title.function_) {
+    color: #953800;
+}
+
+.diffCardBody :global(.hljs-string),
+.diffCardBody :global(.hljs-template-variable),
+.diffCardBody :global(.hljs-addition) {
+    color: #0a3069;
+}
+
+.diffCardBody :global(.hljs-comment),
+.diffCardBody :global(.hljs-quote) {
+    color: #6e7781;
+    font-style: italic;
+}
+
+.diffCardBody :global(.hljs-number),
+.diffCardBody :global(.hljs-literal) {
+    color: #0550ae;
+}
+
+.diffCardBody :global(.hljs-attr),
+.diffCardBody :global(.hljs-selector-class),
+.diffCardBody :global(.hljs-selector-id) {
+    color: #116329;
+}
+
+.diffCardBody :global(.hljs-variable),
+.diffCardBody :global(.hljs-params) {
+    color: #24292f;
+}
+
+.diffCardBody :global(.hljs-regexp) {
+    color: #cf222e;
+}
+
+.diffCardBody :global(.hljs-meta) {
+    color: #6e7781;
+}

@@ -1,0 +1,97 @@
+import { create } from 'zustand';
+import { createConnectionSlice, type ConnectionSlice } from './connection-slice';
+import { createSessionSlice, type SessionSlice } from './session-slice';
+import { createStreamingSlice, type StreamingSlice } from './streaming-slice';
+import { createUiSlice, type UiSlice } from './ui-slice';
+import { createAgentSlice, type AgentSlice } from './agent-slice';
+import { createChannelSlice, type ChannelSlice } from './channel-slice';
+import { createDeskSlice, type DeskSlice } from './desk-slice';
+import { createModelSlice, type ModelSlice } from './model-slice';
+import { createInputSlice, type InputSlice } from './input-slice';
+import { createChatSlice, type ChatSlice } from './chat-slice';
+import { createToastSlice, type ToastSlice } from './toast-slice';
+import { createPreviewSlice, type PreviewSlice } from './preview-slice';
+import { createBrowserSlice, type BrowserSlice } from './browser-slice';
+import { createContextSlice, type ContextSlice } from './context-slice';
+import { createAutomationSlice, type AutomationSlice } from './automation-slice';
+import { createActivitySlice, type ActivitySlice } from './activity-slice';
+import { createBridgeSlice, type BridgeSlice } from './bridge-slice';
+import { createPluginUiSlice, type PluginUiSlice } from './plugin-ui-slice';
+import { createSelectionSlice, type SelectionSlice } from './selection-slice';
+import { createSubagentPreviewSlice, type SubagentPreviewSlice } from './subagent-preview-slice';
+import { createComputerOverlaySlice, type ComputerOverlaySlice } from './computer-overlay-slice';
+import { createScreenshotSlice, type ScreenshotSlice } from './screenshot-slice';
+
+export type StoreState = ConnectionSlice &
+  SessionSlice &
+  StreamingSlice &
+  UiSlice &
+  AgentSlice &
+  ChannelSlice &
+  DeskSlice &
+  ModelSlice &
+  InputSlice &
+  ChatSlice &
+  ToastSlice &
+  PreviewSlice &
+  BrowserSlice &
+  ContextSlice &
+  AutomationSlice &
+  ActivitySlice &
+  BridgeSlice &
+  PluginUiSlice &
+  SelectionSlice &
+  SubagentPreviewSlice &
+  ComputerOverlaySlice &
+  ScreenshotSlice;
+
+export const useStore = create<StoreState>()((set, _get, _api) => ({
+  ...createConnectionSlice(set, _get),
+  ...createSessionSlice(set),
+  ...createStreamingSlice(set, _get),
+  ...createUiSlice(set),
+  ...createAgentSlice(set),
+  ...createChannelSlice(set),
+  ...createDeskSlice(set),
+  ...createModelSlice(set),
+  ...createInputSlice(set),
+  ...createChatSlice(set, _get),
+  ...createToastSlice(set, _get),
+  ...createPreviewSlice(set),
+  ...createBrowserSlice(set),
+  ...createContextSlice(set),
+  ...createAutomationSlice(set),
+  ...createActivitySlice(set),
+  ...createBridgeSlice(set),
+  ...createPluginUiSlice(set),
+  ...createSelectionSlice(set),
+  ...createSubagentPreviewSlice(set),
+  ...createComputerOverlaySlice(set),
+  ...createScreenshotSlice(set),
+}));
+
+// Re-export slice types
+export type {
+  ConnectionSlice,
+  SessionSlice,
+  StreamingSlice,
+  UiSlice,
+  AgentSlice,
+  ChannelSlice,
+  DeskSlice,
+  ModelSlice,
+  InputSlice,
+  ChatSlice,
+  ToastSlice,
+  PreviewSlice,
+  BrowserSlice,
+  ContextSlice,
+  AutomationSlice,
+  ActivitySlice,
+  BridgeSlice,
+  PluginUiSlice,
+  SelectionSlice,
+  SubagentPreviewSlice,
+  ComputerOverlaySlice,
+  ScreenshotSlice,
+};

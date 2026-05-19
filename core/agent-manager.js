@@ -1,0 +1,774 @@
+/**
+ * AgentManager — 多 Agent 生命周期管理
+ *
+ * 从 Engine 提取，负责 agent 的扫描/初始化/创建/切换/删除。
+ * 不持有 engine 引用，通过构造器注入依赖。
+ */
+import fs from "fs";
+import fsp from "fs/promises";
+import path from "path";
+import YAML from "js-yaml";
+import { Agent } from "./agent.js";
+import { safeReadYAMLSync } from "../shared/safe-fs.js";
+import { createModuleLogger } from "../lib/debug-log.js";
+import { clearConfigCache } from "../lib/memory/config-loader.js";
+import { hasCompiledMemory, writeCompiledMemorySnapshot } from "../lib/memory/compiled-memory-snapshot.js";
+import { t } from "../server/i18n.js";
+import { ActivityStore } from "../lib/desk/activity-store.js";
+import { createHash } from "crypto";
+import {
+  generateAgentId as _generateAgentId,
+  generateDescription,
+} from "./llm-utils.js";
+import { findModel, parseModelRef } from "../shared/model-ref.js";
+import { DEFAULT_HEARTBEAT_INTERVAL_MINUTES } from "../shared/default-workspace.js";
+import { relativePathInsideBase } from "./message-utils.js";
+import { detachAgentFromBundles } from "../lib/skill-bundles/store.js";
+
+const logger = createModuleLogger("agent-mgr");
+
+export class AgentManager {
+  /**
+   * @param {object} deps
+   * @param {string} deps.agentsDir
+   * @param {string} deps.productDir
+   * @param {string} deps.userDir
+   * @param {string} deps.channelsDir
+   * @param {() => import('./preferences-manager.js').PreferencesManager} deps.getPrefs
+   * @param {() => import('./model-manager.js').ModelManager} deps.getModels
+   * @param {() => object|null} deps.getHub
+   * @param {() => import('./skill-manager.js').SkillManager} deps.getSkills
+   * @param {() => object} deps.getSearchConfig
+   * @param {() => object} deps.resolveUtilityConfig
+   * @param {() => object} deps.getSharedModels
+   * @param {() => import('./channel-manager.js').ChannelManager} deps.getChannelManager
+   * @param {() => import('./session-coordinator.js').SessionCoordinator} deps.getSessionCoordinator
+   */
+  constructor(deps) {
+    this._d = deps;
+    this._agents = new Map();
+    this._activeAgentId = null;
+    this._switchQueue = Promise.resolve();
+    this._activityStores = new Map();
+    this._agentListCache = null;       // { raw: [{id,name,yuan,identity}], ts: number }
+    this._descRefreshPending = false;
+  }
+
+  /** 清除 listAgents 缓存（agent 增删改时调用） */
+  invalidateAgentListCache() { this._agentListCache = null; }
+
+  get agents() { return this._agents; }
+  get activeAgentId() { return this._activeAgentId; }
+  set activeAgentId(id) { this._activeAgentId = id; }
+  get switching() { return this._switchQueue !== Promise.resolve(); }
+
+  /** 当前焦点 agent */
+  get agent() { return this._agents.get(this._activeAgentId); }
+
+  /** 按 ID 获取 agent */
+  getAgent(agentId) { return this._agents.get(agentId) || null; }
+
+  // ── Activity Store（per-agent 懒缓存） ──
+
+  get activityStores() { return this._activityStores; }
+
+  getActivityStore(agentId) {
+    let store = this._activityStores.get(agentId);
+    if (!store) {
+      const agDir = path.join(this._d.agentsDir, agentId);
+      store = new ActivityStore(
+        path.join(agDir, "desk", "activities.json"),
+        path.join(agDir, "activity"),
+      );
+      this._activityStores.set(agentId, store);
+    }
+    return store;
+  }
+
+  // ── Init ──
+
+  async initAllAgents(log, startId) {
+    this._activeAgentId = startId;
+
+    const sharedModels = this._d.getSharedModels();
+    const resolveModel = (bareId) =>
+      this._d.getModels().resolveModelWithCredentials(bareId);
+
+    const entries = this._scanAgentDirs();
+    const initOne = async (agentId) => {
+      const ag = this._createAgentInstance(agentId, () => ({}));
+      ag.setGetOwnerIds(this._makeOwnerIdsFn(ag));
+      await ag.init(
+        agentId === this._activeAgentId ? log : () => {},
+        sharedModels,
+        resolveModel,
+      );
+      this._registerAgent(agentId, ag);
+    };
+
+    // 焦点 agent 先初始化 — 失败不阻塞启动，让用户能进应用修配置
+    try {
+      await initOne(this._activeAgentId);
+    } catch (err) {
+      logger.error(`焦点 agent "${this._activeAgentId}" init 失败: ${err.message}`);
+      if (err.stack) logger.error(err.stack);
+      // 仍然创建实例放入 map，让应用能启动。
+      // 关键：必须至少把 config 加载进来，否则 agent.config.models.chat 读不到，
+      // 下游会误判为"没配模型"，触发 session 创建跳过 / 记忆系统未启动等连锁崩溃（#414）。
+      if (!this._agents.has(this._activeAgentId)) {
+        const ag = this._createAgentInstance(this._activeAgentId, () => ({}));
+        ag.setGetOwnerIds(this._makeOwnerIdsFn(ag));
+        try {
+          ag.loadConfigOnly();
+        } catch (cfgErr) {
+          logger.error(`fallback loadConfigOnly 也失败: ${cfgErr.message}`);
+          if (cfgErr.stack) logger.error(cfgErr.stack);
+        }
+        this._registerAgent(this._activeAgentId, ag);
+      }
+    }
+
+    // 其余并行
+    const others = entries.map(e => e.name).filter(id => id !== this._activeAgentId);
+    if (others.length) {
+      const results = await Promise.allSettled(others.map(id => initOne(id)));
+      for (let i = 0; i < results.length; i++) {
+        if (results[i].status === "rejected") {
+          logger.error(`agent "${others[i]}" init 失败: ${results[i].reason?.message}`);
+        }
+      }
+    }
+    log(`[init] ${this._agents.size} 个 agent 初始化完成`);
+  }
+
+  // ── List ──
+
+  static AGENT_LIST_TTL = 30_000; // 30 秒
+
+  listAgents() {
+    const now = Date.now();
+    if (!this._agentListCache || now - this._agentListCache.ts > AgentManager.AGENT_LIST_TTL) {
+      this._agentListCache = { raw: this._scanAgentList(), ts: now };
+    }
+
+    const prefs = this._d.getPrefs();
+    const primaryId = prefs.getPrimaryAgent();
+    const order = prefs.getPreferences()?.agentOrder || [];
+
+    const agents = this._agentListCache.raw.map(a => ({
+      ...a,
+      isPrimary: a.id === primaryId,
+      isCurrent: a.id === this._activeAgentId,
+    }));
+
+    if (order.length) {
+      agents.sort((a, b) => {
+        const ia = order.indexOf(a.id);
+        const ib = order.indexOf(b.id);
+        return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+      });
+    }
+
+    // lazy refresh：在返回列表后，异步刷新缺少 description 的 agent（每次最多 1 个）
+    if (!this._descRefreshPending) {
+      const needsRefresh = agents.find(a => !this._hasDescription(a.id));
+      if (needsRefresh) {
+        this._descRefreshPending = true;
+        this._refreshDescription(needsRefresh.id)
+          .catch(() => {})
+          .finally(() => { this._descRefreshPending = false; });
+      }
+    }
+
+    return agents;
+  }
+
+  /** 扫盘读取所有 agent 元数据（I/O 密集，由缓存保护） */
+  _scanAgentList() {
+    const entries = fs.readdirSync(this._d.agentsDir, { withFileTypes: true });
+    const agents = [];
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const configPath = path.join(this._d.agentsDir, entry.name, "config.yaml");
+      if (!fs.existsSync(configPath)) continue;
+      try {
+        const cfg = safeReadYAMLSync(configPath, {}, YAML);
+        let identity = "";
+        try {
+          const idMd = fs.readFileSync(path.join(this._d.agentsDir, entry.name, "identity.md"), "utf-8");
+          const lines = idMd.split("\n").filter(l => l.trim() && !l.startsWith("#"));
+          identity = lines[0]?.trim() || "";
+        } catch {}
+        const avatarDir = path.join(this._d.agentsDir, entry.name, "avatars");
+        let hasAvatar = false;
+        try {
+          const avatarFiles = fs.readdirSync(avatarDir);
+          hasAvatar = avatarFiles.some(f => /\.(png|jpe?g|gif|webp)$/i.test(f));
+        } catch {}
+        const chatRef = cfg.models?.chat;
+        const chatModel = typeof chatRef === "object"
+          ? { id: chatRef.id, provider: chatRef.provider }
+          : (chatRef ? { id: chatRef } : null);
+        agents.push({
+          id: entry.name,
+          name: cfg.agent?.name || entry.name,
+          yuan: cfg.agent?.yuan || "hanako",
+          identity,
+          hasAvatar,
+          chatModel,
+          memoryMasterEnabled: cfg.memory?.enabled !== false,
+        });
+      } catch {}
+    }
+    return agents;
+  }
+
+  /** 检查 description.md 是否存在 */
+  _hasDescription(agentId) {
+    try {
+      fs.accessSync(path.join(this._d.agentsDir, agentId, "description.md"));
+      return true;
+    } catch { return false; }
+  }
+
+  /**
+   * 异步刷新 agent 的 description.md
+   * 通过 hash 比对 descriptionSource + yuan 类型，变化时调用 LLM 重新生成。
+   */
+  async _refreshDescription(agentId) {
+    try {
+      const ag = this._agents.get(agentId);
+      if (!ag) return;
+
+      const source = ag.descriptionSource || ag.personality;
+      const yuan = ag.config?.agent?.yuan || "hanako";
+      const hash = createHash("sha256").update(source + "\n" + yuan).digest("hex");
+
+      const descPath = path.join(this._d.agentsDir, agentId, "description.md");
+
+      // 读取已有 hash
+      try {
+        const firstLine = fs.readFileSync(descPath, "utf-8").split("\n")[0].trim();
+        const match = firstLine.match(/^<!--\s*sourceHash:\s*(\S+)\s*-->$/);
+        if (match?.[1] === hash) return; // 没变化，跳过
+      } catch {} // 文件不存在，继续生成
+
+      const utilConfig = this._d.resolveUtilityConfig({ agentId });
+      const locale = ag.config?.locale || "zh";
+      const desc = await generateDescription(utilConfig, source, locale);
+      if (!desc) {
+        log.log(`[description] ${agentId}: 生成跳过（LLM 不可用或返回空）`);
+        return;
+      }
+
+      fs.writeFileSync(descPath, `<!-- sourceHash: ${hash} -->\n${desc}`, "utf-8");
+      log.log(`[description] ${agentId}: 已更新`);
+    } catch (err) {
+      console.warn(`[agent-mgr] _refreshDescription(${agentId}) failed:`, err.message);
+    }
+  }
+
+  // ── Create ──
+
+  /**
+   * Best-effort rollback of createAgent's partial state.
+   * Called when any step between fs.mkdirSync and this._agents.set fails.
+   * All cleanup is wrapped in try/catch so a cleanup failure doesn't mask
+   * the original error.
+   */
+  async _rollbackAgentCreation(agentDir, agentId) {
+    try { fs.rmSync(agentDir, { recursive: true, force: true }); } catch {}
+    try { await this._d.getChannelManager().cleanupAgentFromChannels(agentId); } catch {}
+  }
+
+  async createAgent({ name, id, yuan, enabledSkills, initialFiles, avatarPath, initialMemory }) {
+    if (!name?.trim()) throw new Error(t("error.agentNameEmpty"));
+
+    const agentId = id?.trim() || await this._generateAgentId(name);
+    if (/[\/\\]|\.\./.test(agentId)) throw new Error(t("error.agentIdInvalid"));
+    const agentDir = path.join(this._d.agentsDir, agentId);
+
+    if (fs.existsSync(agentDir)) {
+      throw new Error(t("error.agentAlreadyExists", { id: agentId }));
+    }
+
+    // 创建目录结构
+    fs.mkdirSync(agentDir, { recursive: true });
+    fs.mkdirSync(path.join(agentDir, "memory"), { recursive: true });
+    fs.mkdirSync(path.join(agentDir, "sessions"), { recursive: true });
+    fs.mkdirSync(path.join(agentDir, "avatars"), { recursive: true });
+
+    // 从模板复制 config.yaml
+    const templateConfig = fs.readFileSync(path.join(this._d.productDir, "config.example.yaml"), "utf-8");
+    const currentAgent = this.agent;
+    const userName = currentAgent?.userName || "";
+    const configSeed = YAML.load(templateConfig);
+    if (!configSeed || typeof configSeed !== "object" || Array.isArray(configSeed)) {
+      throw new Error("Invalid config.example.yaml");
+    }
+    const VALID_YUAN = ["hanako", "butter", "ming", "kong"];
+    const yuanType = VALID_YUAN.includes(yuan) ? yuan : "hanako";
+    const config = configSeed;
+    config.agent = { ...(config.agent || {}), name: name.trim(), yuan: yuanType };
+    config.memory = {
+      ...(config.memory || {}),
+      enabled: true,
+    };
+    config.desk = {
+      ...(config.desk || {}),
+      heartbeat_enabled: false,
+      heartbeat_interval: DEFAULT_HEARTBEAT_INTERVAL_MINUTES,
+    };
+    if (userName) {
+      config.user = { ...(config.user || {}), name: userName };
+    }
+    // migration #5 之后 models.chat 的唯一合法持久化格式是 {id, provider}。
+    // 新建 agent 时必须直接写完整复合键，不能再把旧字符串格式重新带回磁盘。
+    const chatRef = parseModelRef(currentAgent?.config?.models?.chat);
+    const defaultModel = this._d.getModels().defaultModel;
+    const inheritedChat = (chatRef?.id && chatRef.provider)
+      ? { id: chatRef.id, provider: chatRef.provider }
+      : (defaultModel?.id && defaultModel?.provider)
+        ? { id: defaultModel.id, provider: defaultModel.provider }
+        : null;
+    if (inheritedChat) {
+      config.models = { ...(config.models || {}), chat: inheritedChat };
+    }
+    fs.writeFileSync(
+      path.join(agentDir, "config.yaml"),
+      YAML.dump(config, { indent: 2, lineWidth: -1, sortKeys: false, quotingType: '"' }),
+      "utf-8",
+    );
+
+    // 与 personality/buildSystemPrompt 的 fallback 链保持一致：
+    // yuan 专属（locale 细分） → yuan 专属（通用语言） → 通用 example。
+    // 保证选不同 yuan 时写入的是该 yuan 的默认内容，而不是通用兜底。
+    const isZh = String(currentAgent?.config?.locale || "zh").startsWith("zh");
+    const langDir = isZh ? "" : "en/";
+    const firstExisting = (paths) => paths.find((p) => fs.existsSync(p));
+
+    // identity.md
+    const identitySrc = firstExisting([
+      path.join(this._d.productDir, "identity-templates", `${langDir}${yuanType}.md`),
+      path.join(this._d.productDir, "identity-templates", `${yuanType}.md`),
+      path.join(this._d.productDir, "identity.example.md"),
+    ]);
+    if (identitySrc) {
+      const tmpl = fs.readFileSync(identitySrc, "utf-8");
+      const filled = tmpl
+        .replace(/\{\{agentName\}\}/g, name.trim())
+        .replace(/\{\{userName\}\}/g, currentAgent?.userName || t("error.fallbackUserName"));
+      fs.writeFileSync(path.join(agentDir, "identity.md"), filled, "utf-8");
+    }
+
+    // ishiki.md
+    const ishikiSrc = firstExisting([
+      path.join(this._d.productDir, "ishiki-templates", `${langDir}${yuanType}.md`),
+      path.join(this._d.productDir, "ishiki-templates", `${yuanType}.md`),
+      path.join(this._d.productDir, "ishiki.example.md"),
+    ]);
+    if (ishikiSrc) {
+      fs.copyFileSync(ishikiSrc, path.join(agentDir, "ishiki.md"));
+    }
+
+    // public-ishiki.md（对外意识模板）
+    const publicIshikiSrc = firstExisting([
+      path.join(this._d.productDir, "public-ishiki-templates", `${langDir}${yuanType}.md`),
+      path.join(this._d.productDir, "public-ishiki-templates", `${yuanType}.md`),
+    ]);
+    if (publicIshikiSrc) {
+      fs.copyFileSync(publicIshikiSrc, path.join(agentDir, "public-ishiki.md"));
+    }
+
+    if (initialFiles && typeof initialFiles === "object") {
+      const fileMap = {
+        identity: "identity.md",
+        ishiki: "ishiki.md",
+        publicIshiki: "public-ishiki.md",
+      };
+      for (const [key, fileName] of Object.entries(fileMap)) {
+        if (typeof initialFiles[key] === "string") {
+          fs.writeFileSync(path.join(agentDir, fileName), initialFiles[key], "utf-8");
+        }
+      }
+    }
+
+    if (avatarPath) {
+      const ext = path.extname(avatarPath).toLowerCase();
+      const avatarExt = ext === ".jpeg" ? ".jpg" : ext;
+      if (![".png", ".jpg", ".webp"].includes(avatarExt)) {
+        await this._rollbackAgentCreation(agentDir, agentId);
+        throw new Error("Unsupported avatar image type");
+      }
+      try {
+        fs.copyFileSync(avatarPath, path.join(agentDir, "avatars", `agent${avatarExt}`));
+      } catch (err) {
+        await this._rollbackAgentCreation(agentDir, agentId);
+        throw err;
+      }
+    }
+
+    // 可选文件：确保存在（即使为空），避免运行时 ENOENT
+    const touchIfMissing = (p) => { if (!fs.existsSync(p)) fs.writeFileSync(p, '', 'utf-8'); };
+    touchIfMissing(path.join(agentDir, 'pinned.md'));
+
+    if (initialMemory?.compiled && hasCompiledMemory(initialMemory.compiled)) {
+      try {
+        writeCompiledMemorySnapshot(path.join(agentDir, "memory"), initialMemory.compiled, {
+          source: initialMemory.source || "character-card",
+          sourceId: initialMemory.sourceId || `agent-create-${agentId}`,
+          sourcePackage: initialMemory.sourcePackage || null,
+        });
+      } catch (err) {
+        await this._rollbackAgentCreation(agentDir, agentId);
+        throw err;
+      }
+    }
+
+    // 频道系统
+    try {
+      await this._d.getChannelManager().setupChannelsForNewAgent(agentId);
+    } catch (err) {
+      await this._rollbackAgentCreation(agentDir, agentId);
+      throw err;
+    }
+
+    // 初始化并加入长驻 Map
+    const ag = this._createAgentInstance(agentId, () => ({}));
+    ag.setGetOwnerIds(this._makeOwnerIdsFn(ag));
+    const resolveModel = (bareId) =>
+      this._d.getModels().resolveModelWithCredentials(bareId);
+    try {
+      await ag.init(() => {}, this._d.getSharedModels(), resolveModel);
+    } catch (err) {
+      // init 失败：回滚已创建的目录和频道状态，防止孤儿残留
+      await this._rollbackAgentCreation(agentDir, agentId);
+      throw err;
+    }
+    // #419: 普通新建 agent 继承当前已装 user/SDK skill 快照;空快照时保留 template 默认。
+    // 角色卡导入会传入显式 enabledSkills,此时必须只启用包内技能。
+    const hasEnabledOverride = Array.isArray(enabledSkills);
+    const nextEnabled = hasEnabledOverride
+      ? enabledSkills
+      : this._d.getSkills().computeDefaultEnabledForNewAgent();
+    if (hasEnabledOverride || nextEnabled.length > 0) {
+      try {
+        ag.updateConfig({ skills: { enabled: nextEnabled } });
+        this._d.getSkills().syncAgentSkills(ag);
+      } catch (err) {
+        await this._rollbackAgentCreation(agentDir, agentId);
+        throw err;
+      }
+    }
+    this._registerAgent(agentId, ag);
+
+    // 启动 cron + heartbeat
+    const hub = this._d.getHub();
+    hub?.scheduler?.startAgentCron(agentId);
+    const newAgent = this._agents.get(agentId);
+    if (newAgent) {
+      hub?.scheduler?.startAgentHeartbeat?.(agentId, newAgent);
+    }
+
+    // 注入 DM 回调
+    const dmRouter = hub?.dmRouter;
+    if (dmRouter) {
+      ag.setDmSentHandler((fromId, toId) => dmRouter.handleNewDm(fromId, toId));
+    }
+
+    this.invalidateAgentListCache();
+    log.log(`创建助手: ${name} (${agentId})`);
+    return { id: agentId, name: name.trim() };
+  }
+
+  // ── Switch ──
+
+  /**
+   * 仅切换 agent 指针（不创建 session）。排队执行，不会并发。
+   * SessionCoordinator.switchSession 跨 agent 时调用此方法。
+   */
+  async switchAgentOnly(agentId) {
+    return this._enqueueSwitch(() => this._doSwitchAgentOnly(agentId));
+  }
+
+  /**
+   * 完整切换：切 agent 指针 + 恢复调度 + 同步 skills + 创建 session。
+   * 排队执行，快速连续切换会按序落到最终目标。
+   */
+  async switchAgent(agentId) {
+    return this._enqueueSwitch(() => this._doSwitchAgent(agentId));
+  }
+
+  /** Promise 链互斥：所有切换操作排队执行，前一个失败不阻塞后续 */
+  _enqueueSwitch(fn) {
+    const queued = this._switchQueue.catch(() => {}).then(fn);
+    this._switchQueue = queued;
+    return queued;
+  }
+
+  // 纯切指针：不动 heartbeat / cron / channel。heartbeat 是 per-agent 闭包，
+  // 与 _activeAgentId 解耦，跨 agent 跳转期间应持续运行。pause/resume 是
+  // _doSwitchAgent 重建焦点 session 窗口期的保护措施，不属于这条路径。
+  async _doSwitchAgentOnly(agentId) {
+    if (!this._agents.has(agentId)) {
+      throw new Error(t("error.agentNotFound", { id: agentId }));
+    }
+    const prevAgentId = this._activeAgentId;
+    log.log(`switching agent to ${agentId}`);
+    try {
+      clearConfigCache();
+      this._activeAgentId = agentId;
+
+      // migration #5 之后 models.chat 是 {id, provider}；
+      // 若仍是字符串或缺 provider，说明 migration 未能推断（provider 被删除等），
+      // 当作未配置处理，保留上一个 defaultModel 的状态。
+      const chatRef = this.agent.config.models?.chat;
+      const ref = (typeof chatRef === "object" && chatRef?.id && chatRef?.provider) ? chatRef : null;
+      const models = this._d.getModels();
+      if (ref) {
+        const model = findModel(models.availableModels, ref.id, ref.provider);
+        if (!model) {
+          throw new Error(t("error.agentModelNotAvailable", { id: agentId, model: `${ref.provider}/${ref.id}` }));
+        }
+        models.defaultModel = model;
+      } else if (chatRef) {
+        log.warn(`switchAgent(${agentId}): models.chat 缺 provider (${JSON.stringify(chatRef)})，跳过默认模型设置`);
+      }
+      const effectiveModel = ref?.id || models.defaultModel?.id || "inherited";
+      log.log(`agent switched to ${this.agent.agentName} (${agentId}), model=${effectiveModel}`);
+    } catch (err) {
+      this._activeAgentId = prevAgentId;
+      throw err;
+    }
+  }
+
+  async _doSwitchAgent(agentId) {
+    const hub = this._d.getHub();
+    const engine = this._d.getEngine?.();
+    const previousCwd = engine?.cwd || null;
+    // pause/resume 严格配对：try/finally 保证 resume 一定调到，
+    // 包括 _doSwitchAgentOnly / syncAgentSkills / createSession 任一抛错的路径。
+    await hub?.pauseForAgentSwitch();
+    try {
+      await this._doSwitchAgentOnly(agentId);
+      this._d.getSkills().syncAgentSkills(this.agent);
+      this._d.getPrefs().savePrimaryAgent(agentId);
+      const homeFolder = engine?.getExplicitHomeCwd?.(agentId) || null;
+      const nextCwd = homeFolder || previousCwd || engine?.getHomeCwd?.(agentId) || undefined;
+      const sessionResult = await this._d.getSessionCoordinator().createSession(null, nextCwd);
+      const cwd = sessionResult?.session?.sessionManager?.getCwd?.() || nextCwd || null;
+      log.log(`已切换到助手: ${this.agent.agentName} (${agentId})`);
+      return {
+        ...sessionResult,
+        cwd,
+        homeFolder,
+      };
+    } finally {
+      hub?.resumeAfterAgentSwitch();
+    }
+  }
+
+  async createSessionForAgent(agentId, cwd, memoryEnabled = true, model = null, opts = {}) {
+    if (agentId && agentId !== this._activeAgentId) {
+      await this.switchAgentOnly(agentId);
+    }
+    return this._d.getSessionCoordinator().createSession(null, cwd, memoryEnabled, model, opts);
+  }
+
+  // ── Delete ──
+
+  async deleteAgent(agentId) {
+    if (agentId === this._activeAgentId) {
+      throw new Error(t("error.agentDeleteActive"));
+    }
+
+    const agentDir = path.join(this._d.agentsDir, agentId);
+    if (!fs.existsSync(agentDir)) {
+      throw new Error(t("error.agentNotExists", { id: agentId }));
+    }
+
+    const ag = this._agents.get(agentId);
+    if (ag) {
+      this._agents.delete(agentId);
+      this._activityStores.delete(agentId);
+      await this._d.getHub()?.scheduler?.removeAgentCron(agentId);
+      await this._d.getHub()?.scheduler?.stopHeartbeat(agentId);
+      await ag.dispose();
+    }
+
+    // 频道清理
+    try {
+      await this._d.getChannelManager().cleanupAgentFromChannels(agentId);
+    } catch (err) {
+      log.error(`频道清理失败 (${agentId}): ${err.message}`);
+    }
+
+    await fsp.rm(agentDir, { recursive: true, force: true });
+
+    if (this._d.hanakoHome) {
+      try {
+        detachAgentFromBundles({ hanakoHome: this._d.hanakoHome }, agentId);
+      } catch (err) {
+        log.error(`Skill Bundle 解耦失败 (${agentId}): ${err.message}`);
+      }
+    }
+
+    const prefs = this._d.getPrefs();
+    const primaryId = prefs.getPrimaryAgent();
+    if (primaryId === agentId) {
+      prefs.savePrimaryAgent(this._activeAgentId);
+    }
+
+    const order = prefs.getPreferences()?.agentOrder || [];
+    const newOrder = order.filter(id => id !== agentId);
+    if (newOrder.length !== order.length) {
+      const p = prefs.getPreferences();
+      p.agentOrder = newOrder;
+      prefs.savePreferences(p);
+    }
+
+    this.invalidateAgentListCache();
+    log.log(`已删除助手: ${agentId}`);
+  }
+
+  // ── Utility ──
+
+  setPrimaryAgent(agentId) {
+    const agentDir = path.join(this._d.agentsDir, agentId);
+    if (!fs.existsSync(path.join(agentDir, "config.yaml"))) {
+      throw new Error(t("error.agentNotExists", { id: agentId }));
+    }
+    this._d.getPrefs().savePrimaryAgent(agentId);
+  }
+
+  agentIdFromSessionPath(sessionPath) {
+    const rel = relativePathInsideBase(sessionPath, this._d.agentsDir);
+    if (rel === null || rel === "") return null;
+    return rel.split(path.sep)[0] || null;
+  }
+
+  // ── Dispose ──
+
+  async disposeAll(sessionCoord) {
+    // 对所有缓存 session 做 final 滚动摘要（带超时保护）
+    const entries = sessionCoord ? [...sessionCoord._sessions.entries()] : [];
+    if (entries.length > 0) {
+      const summaryPromises = entries.map(([sp, entry]) => {
+        const agent = this._agents.get(entry.agentId) || this.agent;
+        return Promise.race([
+          agent?._memoryTicker?.notifySessionEnd(sp) ?? Promise.resolve(),
+          new Promise(r => setTimeout(r, 4000)),
+        ]);
+      });
+      await Promise.allSettled(summaryPromises);
+    }
+    await Promise.allSettled(
+      [...this._agents.values()].map(ag => ag.dispose()),
+    );
+    this._agents.clear();
+  }
+
+  // ── Internal ──
+
+  _scanAgentDirs() {
+    try {
+      return fs.readdirSync(this._d.agentsDir, { withFileTypes: true })
+        .filter(e => e.isDirectory() && fs.existsSync(path.join(this._d.agentsDir, e.name, "config.yaml")));
+    } catch { return []; }
+  }
+
+  /** 构造 per-agent getOwnerIds 闭包：从 agent 自身的 config.bridge 读取 */
+  _makeOwnerIdsFn(ag) {
+    return () => {
+      const bridgeCfg = ag.config?.bridge || {};
+      const ids = {};
+      for (const [plat, cfg] of Object.entries(bridgeCfg)) {
+        if (plat === 'readOnly') continue;
+        if (typeof cfg === 'object' && cfg?.owner) ids[plat] = cfg.owner;
+      }
+      return ids;
+    };
+  }
+
+  /**
+   * 注册 agent 到长驻 Map，写入前校验 id 与实例字段一致。
+   * 防止未来某次改动让 Map key 和 agent.id 错位（这是过去 agent.id=undefined 类 bug 的温床）。
+   */
+  _registerAgent(agentId, ag) {
+    if (ag.id !== agentId) {
+      throw new Error(`agent id mismatch: map key "${agentId}" vs instance.id "${ag.id}"`);
+    }
+    this._agents.set(agentId, ag);
+  }
+
+  _createAgentInstance(agentId, getOwnerIds) {
+    const ag = new Agent({
+      id: agentId,
+      agentsDir: this._d.agentsDir,
+      productDir: this._d.productDir,
+      userDir: this._d.userDir,
+      channelsDir: this._d.channelsDir,
+      searchConfigResolver: () => this._d.getSearchConfig(),
+    });
+    ag.setGetOwnerIds(getOwnerIds);
+    // 回调注入：Agent 通过 _cb 访问 Engine 能力，不直接持有 Engine 引用
+    const getEngine = () => this._d.getEngine?.();
+    ag.setCallbacks({
+      emitDevLog:           (text, level) => getEngine()?.emitDevLog?.(text, level),
+      getConfirmStore:      () => getEngine()?.confirmStore ?? null,
+      getCurrentSessionPath:() => getEngine()?.currentSessionPath ?? null,
+      emitEvent:            (event, sp) => getEngine()?._emitEvent?.(event, sp),
+      emitSessionEvent:     (event) => getEngine()?.emitSessionEvent?.(event),
+      getDeferredResults:   () => getEngine()?.deferredResults ?? null,
+      getTaskRegistry:      () => getEngine()?.taskRegistry ?? null,
+      registerSessionFile:  (entry) => getEngine()?.registerSessionFile?.(entry),
+      setSubagentController: (id, ctrl) => getEngine()?.setSubagentController(id, ctrl),
+      removeSubagentController: (id) => getEngine()?.removeSubagentController(id),
+      executeIsolated:      (prompt, opts) => getEngine()?.executeIsolated(prompt, opts),
+      getCurrentModelId:    () => getEngine()?.currentModel?.id ?? null,
+      getSkillsDir:         () => getEngine()?.skillsDir ?? null,
+      getLearnSkills:       () => getEngine()?.getLearnSkills?.() ?? {},
+      isChannelsEnabled:    () => getEngine()?.isChannelsEnabled?.() ?? false,
+      resolveUtilityConfig: () => getEngine()?.resolveUtilityConfig?.({ agentId: ag.id }),
+      getCwd:               () => getEngine()?.cwd ?? "",
+      getTimezone:          () => getEngine()?.getTimezone?.() ?? "",
+      getEngine,  // update-settings-tool 仍需要完整 engine
+    });
+    ag.setOnInstallCallback(async (skillName) => {
+      const skills = this._d.getSkills();
+      await skills.reload(this._d.getResourceLoader?.(), this._agents);
+      const enabled = new Set(ag.config?.skills?.enabled || []);
+      enabled.add(skillName);
+      ag.updateConfig({ skills: { enabled: [...enabled] } });
+      skills.syncAgentSkills(ag);
+    });
+    ag.setNotifyHandler((payload) => {
+      const engine = this._d.getEngine?.();
+      if (typeof engine?.deliverNotification === "function") {
+        return engine.deliverNotification(payload, { agentId: ag.id });
+      }
+      this._d.getHub()?.eventBus?.emit({
+        type: "notification",
+        title: payload?.title || "",
+        body: payload?.body || "",
+        agentId: ag.id,
+      }, null);
+      return undefined;
+    });
+    ag.setDescriptionRefreshHandler(() => {
+      this._refreshDescription(ag.id).catch(() => {});
+    });
+    return ag;
+  }
+
+  async _generateAgentId(name) {
+    let utilConfig;
+    try {
+      utilConfig = this._d.resolveUtilityConfig();
+    } catch {
+      // utility 模型未配置（新用户常见），直接走兜底 ID
+      return `agent-${Date.now().toString(36)}`;
+    }
+    return _generateAgentId(utilConfig, name, this._d.agentsDir);
+  }
+}

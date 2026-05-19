@@ -1,0 +1,174 @@
+import React, { useEffect, useState, useCallback } from 'react';
+import { useSettingsStore } from '../store';
+import { autoSaveConfig, t } from '../helpers';
+import { Toggle } from '../widgets/Toggle';
+import { loadSettingsConfig } from '../actions';
+import { SettingsSection } from '../components/SettingsSection';
+import { SettingsRow } from '../components/SettingsRow';
+import { ExpandableRow } from '../components/ExpandableRow';
+import { AutoUpdateStatus } from '../../components/AutoUpdateStatus';
+import { useAutoUpdateState } from '../../hooks/use-auto-update-state';
+import type { AutoLaunchStatus } from '../../types';
+import appIconUrl from '../../../icon.png';
+import styles from '../Settings.module.css';
+
+export function AboutTab() {
+  const hana = window.hana;
+  const settingsConfig = useSettingsStore(s => s.settingsConfig);
+  const [version, setVersion] = useState('');
+  const [autoLaunch, setAutoLaunch] = useState<AutoLaunchStatus | null>(null);
+  const [autoLaunchSaving, setAutoLaunchSaving] = useState(false);
+  const autoUpdate = useAutoUpdateState();
+  const isBeta = settingsConfig?.update_channel === 'beta';
+  // 默认 true：老用户（preferences 里没写这个字段）保持原有"自动检查"行为
+  const autoCheck = settingsConfig?.auto_check_updates !== false;
+
+  useEffect(() => {
+    hana?.getAppVersion?.().then((v: string) => setVersion(v || ''));
+  }, [hana]);
+
+  useEffect(() => {
+    let alive = true;
+    hana?.getAutoLaunchStatus?.()
+      .then((status) => {
+        if (alive && status) setAutoLaunch(status);
+      })
+      .catch(() => {
+        if (alive) setAutoLaunch(null);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [hana]);
+
+  const handleCheck = useCallback(() => {
+    hana?.autoUpdateCheck?.();
+  }, []);
+
+  const handleInstall = useCallback(async () => {
+    await hana?.autoUpdateInstall?.();
+  }, []);
+
+  const handleBetaToggle = useCallback(async (on: boolean) => {
+    const channel = on ? 'beta' : 'stable';
+    hana?.autoUpdateSetChannel?.(channel);
+    await autoSaveConfig({ update_channel: channel }, { silent: true });
+    await loadSettingsConfig();
+    hana?.autoUpdateCheck?.();
+  }, []);
+
+  const handleAutoCheckToggle = useCallback(async (on: boolean) => {
+    await autoSaveConfig({ auto_check_updates: on }, { silent: true });
+    await loadSettingsConfig();
+  }, []);
+
+  const handleAutoLaunchToggle = useCallback(async (on: boolean) => {
+    if (!hana?.setAutoLaunchEnabled) return;
+    const previous = autoLaunch;
+    setAutoLaunchSaving(true);
+    try {
+      const next = await hana.setAutoLaunchEnabled(on);
+      setAutoLaunch(next || previous);
+    } catch {
+      setAutoLaunch(previous);
+    } finally {
+      setAutoLaunchSaving(false);
+    }
+  }, [autoLaunch, hana]);
+
+  return (
+    <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="about">
+      {/* Hero：保留原 about-hero 独立视觉组件（icon + name + tagline + version + update + check 按钮） */}
+      <div className={styles['about-hero']}>
+        <img className={styles['about-icon']} src={appIconUrl} alt="Hanako" />
+        <div className={styles['about-name']}>Hanako</div>
+        <div className={styles['about-tagline']}>{t('settings.about.tagline')}</div>
+        {version && <div className={styles['about-version']}>v{version}</div>}
+        <AutoUpdateStatus
+          state={autoUpdate}
+          agentName={settingsConfig?.agent?.name || 'Hanako'}
+          onInstall={handleInstall}
+        />
+        {(!autoUpdate || autoUpdate.status === 'idle' || autoUpdate.status === 'latest' || autoUpdate.status === 'error') && (
+          <button className={styles['about-check-update-btn']} onClick={handleCheck}>
+            {t('settings.about.updateCheckBtn')}
+          </button>
+        )}
+      </div>
+
+      {/* Info：4 个标准 row（license / copyright / github / beta toggle） */}
+      <SettingsSection>
+        <SettingsRow
+          label={t('settings.about.license')}
+          control={<span>Apache License 2.0</span>}
+        />
+        <SettingsRow
+          label={t('settings.about.copyright')}
+          control={<span>© 2026 liliMozi</span>}
+        />
+        <SettingsRow
+          label="GitHub"
+          control={
+            <a
+              className={styles['about-link']}
+              href="#"
+              onClick={(e) => {
+                e.preventDefault();
+                hana?.openExternal?.('https://github.com/liliMozi');
+              }}
+            >
+              github.com/liliMozi
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                <polyline points="15 3 21 3 21 9" />
+                <line x1="10" y1="14" x2="21" y2="3" />
+              </svg>
+            </a>
+          }
+        />
+        {autoLaunch?.supported && (
+          <SettingsRow
+            label={t('settings.about.launchAtLogin')}
+            control={
+              <Toggle
+                on={autoLaunch.openAtLogin}
+                onChange={handleAutoLaunchToggle}
+                label={t('settings.about.launchAtLogin')}
+                disabled={autoLaunchSaving}
+              />
+            }
+          />
+        )}
+        <SettingsRow
+          label={t('settings.about.autoCheckUpdates')}
+          control={<Toggle on={autoCheck} onChange={handleAutoCheckToggle} />}
+        />
+        <SettingsRow
+          label={t('settings.about.betaUpdates')}
+          control={<Toggle on={isBeta} onChange={handleBetaToggle} />}
+        />
+      </SettingsSection>
+
+      {/* License 全文：ExpandableRow 直接作为 tab 末尾元素 */}
+      <ExpandableRow label={t('settings.about.licenseToggle')}>
+        <pre className={styles['about-license-text']}>{LICENSE_TEXT}</pre>
+      </ExpandableRow>
+    </div>
+  );
+}
+
+const LICENSE_TEXT = `Apache License, Version 2.0
+
+Copyright 2026 liliMozi
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.`;

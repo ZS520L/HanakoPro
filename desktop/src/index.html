@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Content-Security-Policy"
+          content="default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data: file: http://127.0.0.1:*; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:; frame-src blob: data: http://127.0.0.1:* http://localhost:*;">
+    <title>Hanako</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="themes/warm-paper.css" id="themeSheet">
+</head>
+<body>
+    <div id="react-root"></div>
+
+    <script src="lib/i18n.js"></script>
+    <script src="lib/theme.js"></script>
+    <script src="modules/platform.js"></script>
+    <script type="module" src="./main.tsx"></script>
+</body>
+</html>

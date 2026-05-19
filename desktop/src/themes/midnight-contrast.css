@@ -1,0 +1,67 @@
+/*
+ * Hana Theme: 青夜·高对比
+ * 更深的青蓝底 + 高可读文字层级
+ */
+
+[data-theme="midnight-contrast"] {
+    /* 背景（深青蓝） */
+    --bg:           #26343D;
+    --bg-card:      #30414B;
+    --bg-glass:     rgba(38, 52, 61, 0.94);
+
+    /* 主色调（亮玫瑰） */
+    --accent:       #E6B1C4;
+    --accent-hover: #F0C4D3;
+    --accent-light: rgba(230, 177, 196, 0.14);
+    --link:         #B9E2FF;
+    --link-hover:   #D7F0FF;
+    --link-rgb:     185, 226, 255;
+
+    /* 文字 */
+    --text:         #F0F6FA;
+    --text-light:   #D3E0E8;
+    --text-muted:   #B7C8D3;
+
+    /* 边框与阴影 */
+    --border:       rgba(230, 177, 196, 0.26);
+    --shadow:       rgba(0, 0, 0, 0.44);
+
+    /* 状态色 */
+    --green:        #A8DDAA;
+    --green-rgb:    168, 221, 170;
+    --coral:        #F1BEAD;
+
+    /* 侧边栏 */
+    --sidebar-bg:   #202C34;
+    --sidebar-bridge-card-text: #26323A;
+
+    /* 便笺 */
+    --jian-note-bg:     #354852;
+    --jian-note-border: rgba(230, 177, 196, 0.22);
+
+    /* 聊天专用 */
+    --hana-text:    #E8F1F6;
+    --mood-bg:      rgba(241, 190, 173, 0.11);
+    --mood-text:    #F1BEAD;
+    --mood-border:  rgba(241, 190, 173, 0.28);
+    --tool-bg:      rgba(230, 177, 196, 0.12);
+    --tool-text:    #D3E0E8;
+    --user-bg:      rgba(230, 177, 196, 0.15);
+    --drop-overlay-bg: rgba(38, 52, 61, 0.88);
+    --attach-bg:    rgba(255, 255, 255, 0.08);
+
+    /* 辅助色 */
+    --accent-rgb:   230, 177, 196;
+    --coral-rgb:    241, 190, 173;
+    --danger:       #E28B8B;
+    --danger-rgb:   226, 139, 139;
+    --overlay-subtle: rgba(255, 255, 255, 0.04);
+    --overlay-light:  rgba(255, 255, 255, 0.07);
+    --overlay-medium: rgba(255, 255, 255, 0.11);
+    --tab-slider-bg:      var(--overlay-strong);
+    --tab-slider-shadow:  none;
+    --overlay-strong: rgba(255, 255, 255, 0.18);
+
+    /* Select 下拉箭头（SVG 内联必须硬编码颜色，跟随 text-muted） */
+    --select-arrow: url("data:image/svg+xml,%3Csvg width='10' height='6' viewBox='0 0 10 6' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23B7C8D3' fill='none' stroke-width='1.5' stroke-linecap='round'/%3E%3C/svg%3E");
+}

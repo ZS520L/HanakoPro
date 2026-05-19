@@ -1,0 +1,24 @@
+{
+  "manifestVersion": 1,
+  "id": "sdk-showcase",
+  "name": "SDK Showcase",
+  "version": "0.1.0",
+  "description": "Example plugin showing Hana SDK runtime, iframe, and component helpers.",
+  "minAppVersion": "0.158.0",
+  "trust": "full-access",
+  "ui": {
+    "hostCapabilities": ["external.open", "clipboard.writeText"]
+  },
+  "contributes": {
+    "page": {
+      "title": "SDK Showcase",
+      "route": "/page",
+      "icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M5 5h14v14H5z\"/><path d=\"M9 9h6M9 13h6\"/></svg>"
+    },
+    "widget": {
+      "title": "SDK",
+      "route": "/widget",
+      "icon": "<svg viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.5\"><path d=\"M8 7l-4 5 4 5\"/><path d=\"M16 7l4 5-4 5\"/></svg>"
+    }
+  }
+}

@@ -1,0 +1,143 @@
+.app {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    background: #1e1e1e;
+    color: #d4d4d4;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    font-size: 13px;
+}
+
+.tabbar {
+    display: flex;
+    align-items: stretch;
+    background: #2d2d2d;
+    border-bottom: 1px solid #1a1a1a;
+    -webkit-app-region: no-drag;
+    height: 32px;
+    flex-shrink: 0;
+    overflow: hidden;
+}
+
+.tabs {
+    display: flex;
+    flex: 1;
+    overflow-x: auto;
+    overflow-y: hidden;
+}
+
+.tabs::-webkit-scrollbar { height: 2px; }
+.tabs::-webkit-scrollbar-thumb { background: #555; }
+
+.tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 8px 0 12px;
+    height: 100%;
+    border-right: 1px solid #1a1a1a;
+    color: #b8b8b8;
+    cursor: pointer;
+    user-select: none;
+    max-width: 220px;
+    min-width: 100px;
+    transition: background 0.12s;
+}
+
+.tab:hover {
+    background: #353535;
+    color: #e5e5e5;
+}
+
+.tabActive {
+    background: #1e1e1e;
+    color: #ffffff;
+    border-bottom: 2px solid #0090ff;
+}
+
+.tabDead {
+    color: #777;
+    font-style: italic;
+}
+
+.tabTitle {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 12px;
+}
+
+.tabClose {
+    background: transparent;
+    border: none;
+    color: inherit;
+    cursor: pointer;
+    width: 18px;
+    height: 18px;
+    line-height: 18px;
+    padding: 0;
+    border-radius: 3px;
+    font-size: 14px;
+    opacity: 0.6;
+}
+
+.tabClose:hover {
+    background: rgba(255, 255, 255, 0.1);
+    opacity: 1;
+}
+
+.newBtn {
+    background: transparent;
+    border: none;
+    color: #b8b8b8;
+    cursor: pointer;
+    width: 32px;
+    height: 100%;
+    font-size: 18px;
+    transition: background 0.12s, color 0.12s;
+}
+
+.newBtn:hover:not(:disabled) {
+    background: #353535;
+    color: #fff;
+}
+
+.newBtn:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+}
+
+.body {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+}
+
+.pane {
+    position: absolute;
+    inset: 0;
+}
+
+.xtermContainer {
+    width: 100%;
+    height: 100%;
+    padding: 4px 0 0 6px;
+    box-sizing: border-box;
+    background: #1e1e1e;
+}
+
+.empty,
+.loading,
+.error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: #888;
+    font-size: 13px;
+}
+
+.error {
+    color: #f14c4c;
+}

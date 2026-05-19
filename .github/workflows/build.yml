@@ -1,0 +1,291 @@
+name: Build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build:
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: dmg
+            arch: arm64
+          - os: macos-latest
+            target: dmg
+            arch: x64
+          - os: windows-latest
+            target: nsis
+            arch: x64
+          - os: ubuntu-latest
+            target: AppImage
+            arch: x64
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      # Windows: 下载 MinGit 用于打包进安装包
+      - name: Download MinGit
+        if: runner.os == 'Windows'
+        run: node scripts/download-git-portable.js
+
+      - name: Build server bundle
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            node scripts/build-server.mjs darwin ${{ matrix.arch }}
+          elif [ "$RUNNER_OS" = "Linux" ]; then
+            node scripts/build-server.mjs linux ${{ matrix.arch }}
+          else
+            node scripts/build-server.mjs win32 ${{ matrix.arch }}
+          fi
+
+      - name: Build Computer Use helper
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          HANA_COMPUTER_USE_HELPER_ARCH=${{ matrix.arch }} node scripts/build-computer-use-helper.mjs ${{ matrix.arch }}
+
+      - name: Build Windows sandbox helper
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: node scripts/build-windows-sandbox-helper.mjs ${{ matrix.arch }}
+
+      - name: Build client bundles (main + preload + renderer)
+        run: npm run build:client
+
+      # macOS: 手动配置签名 keychain + partition-list
+      # electron-builder 内部也会导入证书，但不一定设 partition-list，
+      # 导致 codesign 在无头 CI 上弹 UI 确认对话框而挂起。
+      # 这里先手动搞定，再把 CSC_KEYCHAIN 传给 electron-builder 让它复用。
+      - name: Setup macOS signing keychain
+        if: runner.os == 'macOS'
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          KEYCHAIN_PASSWORD="ci-$(openssl rand -hex 12)"
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          echo "$CSC_LINK" | base64 --decode > "$RUNNER_TEMP/cert.p12"
+          security import "$RUNNER_TEMP/cert.p12" -P "$CSC_KEY_PASSWORD" \
+            -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/cert.p12"
+
+          security set-key-partition-list -S apple-tool:,apple:,codesign: \
+            -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          security list-keychains -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security default-keychain -s "$KEYCHAIN_PATH"
+
+          # 传给 electron-builder：CSC_KEYCHAIN 让它复用这个 keychain，不再自己创建
+          echo "CSC_KEYCHAIN=$KEYCHAIN_PATH" >> "$GITHUB_ENV"
+
+      # macOS: 预签名 dist-server 里的 Mach-O 文件
+      # @electron/osx-sign 在签名大量文件时会卡死（原因不明），
+      # 手动先签好 dist-server 里的 native 二进制，electron-builder 只签 Electron 框架。
+      - name: Pre-sign server binaries
+        if: runner.os == 'macOS'
+        run: |
+          IDENTITY=$(security find-identity -v -p codesigning | grep "Developer ID Application" | head -1 | sed 's/.*"\(.*\)"/\1/')
+          echo "Using identity: $IDENTITY"
+
+          DIST_SERVER="dist-server/mac-${{ matrix.arch }}"
+          echo "Signing .node files..."
+          find "$DIST_SERVER/node_modules" -name "*.node" | while read f; do
+            codesign --sign "$IDENTITY" --timestamp --force "$f"
+            echo "  ✓ $(basename $f)"
+          done
+
+          echo "Signing node binary..."
+          codesign --sign "$IDENTITY" --timestamp --force --options runtime "$DIST_SERVER/node"
+          echo "  ✓ node"
+
+          echo "Pre-signing complete."
+
+      # macOS 打包（签名 + 公证）
+      # --publish never：所有 publish 由 release job 单点控制，避免多 job 并发上传造成
+      # latest-mac.yml 互相覆盖的时间窗口（那是 v0.98.4 "检查更新失败" 的根因之一）。
+      - name: Build macOS (DMG + ZIP)
+        if: runner.os == 'macOS'
+        run: |
+          ulimit -n 65536
+          npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_KEYCHAIN: ${{ env.CSC_KEYCHAIN }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+
+      # Windows 打包
+      # --publish never：和 mac 同理，由 release job 单点上传。
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          npx electron-builder --win nsis --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WIN_CSC_LINK: ${{ secrets.WIN_CSC_LINK }}
+          WIN_CSC_KEY_PASSWORD: ${{ secrets.WIN_CSC_KEY_PASSWORD }}
+
+      # Linux Preview 打包
+      # AppImage 给下载即用体验，deb 给 Ubuntu/Debian 系安装。
+      - name: Build Linux preview packages
+        if: runner.os == 'Linux'
+        run: |
+          npx electron-builder --linux AppImage deb --${{ matrix.arch }} --publish never
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: installer-${{ matrix.os }}-${{ matrix.arch }}
+          retention-days: 3
+          path: |
+            dist/*.dmg
+            dist/*.zip
+            dist/*.exe
+            dist/*.AppImage
+            dist/*.deb
+            dist/latest*.yml
+          if-no-files-found: error
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      # 所有 Release 默认 pre-release，手动在 GitHub 上将稳定版本标记为 latest
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      # build job 改为 --publish never 后，draft release 不再由 electron-builder 自动创建，
+      # 由 release job 显式创建，并通过 --generate-notes 从上一个 tag 的 commit 自动生成 changelog。
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if gh release view "${{ github.ref_name }}" >/dev/null 2>&1; then
+            echo "Release ${{ github.ref_name }} already exists, skipping create"
+          else
+            gh release create "${{ github.ref_name }}" \
+              --draft \
+              --prerelease \
+              --title "${{ github.ref_name }}" \
+              --generate-notes
+          fi
+
+      # 合并双架构的 latest-mac.yml（本地生成，不上传；上传由下一步统一处理）
+      - name: Generate merged latest-mac.yml
+        run: |
+          node scripts/merge-latest-mac-yml.cjs artifacts latest-mac.yml
+
+      # 单点上传所有 release assets（dmg/zip/exe/AppImage/deb/yml），blockmap 不上传
+      - name: Upload release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+
+          echo "=== Uploading installers ==="
+          find artifacts \( -name '*.dmg' -o -name '*.zip' -o -name '*.exe' -o -name '*.AppImage' -o -name '*.deb' \) -print0 |
+            while IFS= read -r -d '' f; do
+              echo "  $f"
+              gh release upload "${{ github.ref_name }}" "$f" --clobber
+            done
+
+          echo "=== Uploading latest.yml (Windows) ==="
+          WIN_YML=$(find artifacts -name 'latest.yml' | head -1)
+          if [ -n "$WIN_YML" ]; then
+            echo "  $WIN_YML"
+            gh release upload "${{ github.ref_name }}" "$WIN_YML" --clobber
+          else
+            echo "::warning::latest.yml not found (Windows build may have failed)"
+          fi
+
+          echo "=== Uploading latest-mac.yml (merged) ==="
+          gh release upload "${{ github.ref_name }}" latest-mac.yml --clobber
+
+      # 硬约束：release 必须包含所有必需产物，缺一个 CI 就 fail，draft 状态留给人手动检查。
+      # 防止以后再有 shell 写漏 / electron-builder 配置改坏 / 单架构构建挂掉 造成的 yml 缺失。
+      - name: Verify release assets
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          ASSETS=$(gh release view "${{ github.ref_name }}" --json assets --jq '.assets[].name')
+          echo "=== Release assets ==="
+          echo "$ASSETS"
+          echo ""
+
+          MISSING=()
+          echo "$ASSETS" | grep -qx 'latest-mac.yml' || MISSING+=("latest-mac.yml")
+          echo "$ASSETS" | grep -qx 'latest.yml' || MISSING+=("latest.yml")
+          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-arm64\.dmg$' || MISSING+=("macOS-arm64.dmg")
+          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-arm64\.zip$' || MISSING+=("macOS-arm64.zip")
+          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-x64\.dmg$' || MISSING+=("macOS-x64.dmg")
+          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-x64\.zip$' || MISSING+=("macOS-x64.zip")
+          echo "$ASSETS" | grep -qE '^Hanako-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
+          echo "$ASSETS" | grep -qE '^Hanako-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
+          echo "$ASSETS" | grep -qE '^Hanako-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
+
+          # 清洁性检查：不应该有 blockmap 漏进来
+          if echo "$ASSETS" | grep -qE '\.blockmap$'; then
+            echo "::warning::blockmap files leaked into release (should be excluded by design):"
+            echo "$ASSETS" | grep -E '\.blockmap$'
+          fi
+
+          if [ ${#MISSING[@]} -gt 0 ]; then
+            echo ""
+            echo "::error::Missing required assets: ${MISSING[*]}"
+            echo "Release will remain as draft for manual inspection."
+            exit 1
+          fi
+          echo ""
+          echo "✓ All required assets present"
+
+      - name: Publish release (un-draft, pre-release)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release edit "${{ github.ref_name }}" --prerelease --draft=false

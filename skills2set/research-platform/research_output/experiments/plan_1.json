@@ -1,0 +1,27 @@
+{
+  "plan": {
+    "hypothesis_id": 1,
+    "datasets": [
+      "CIFAR-10",
+      "CIFAR-100"
+    ],
+    "baselines": [
+      "Revisiting Graph Contrastive Learning on Anomaly Detection: A Structural Imbalance Perspective",
+      "Towards accurate anomaly detection for cloud system via graph-enhanced contrastive learning",
+      "Advancing unsupervised graph anomaly detection: A multi-level contrastive learning framework to mitigate local consistency deception",
+      "An adversarial variational graph autoencoder with contrastive learning for robust anomaly detection in large scale attributed networks"
+    ],
+    "ablations": [
+      "component_a",
+      "component_b",
+      "learning_rate",
+      "batch_size"
+    ],
+    "seeds": 5,
+    "total_experiments": 50,
+    "estimated_time": "~2h (single 4090)",
+    "status": "dry-run"
+  },
+  "experiments": [],
+  "summary": "实验方案已生成。请确认后执行。"
+}

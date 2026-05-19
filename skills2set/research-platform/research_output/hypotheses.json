@@ -1,0 +1,32 @@
+{
+  "hypotheses": [
+    {
+      "statement": "该领域处于快速上升期（论文增速 2x+），建议优先选择 2025 年最新方法作为 baseline，重点关注被忽视的子问题（如动态图、异构图）",
+      "novelty_score": 0.75,
+      "feasibility_score": 0.85,
+      "impact_score": 0.82,
+      "rationale": "热点上升期意味着：(1) 竞争尚未白热化；(2) 很多子方向还未被充分探索；(3) 发表窗口充裕",
+      "risk": "热点可能消退或转向，需持续监控",
+      "suggested_action": "聚焦一个尚未被顶级 venue 覆盖的子方向，快速出探针结果"
+    },
+    {
+      "statement": "多个 venue（Complex & Intelligent Systems, Expert Systems with Applications等）在该领域仅有 1 篇论文，说明该领域与这些 venue 的 scope 存在交叉但未被充分开发",
+      "novelty_score": 0.7,
+      "feasibility_score": 0.8,
+      "impact_score": 0.65,
+      "rationale": "跨 venue 覆盖低意味着：同一工作在不同社区视角下可能有不同解读，存在跨社区创新空间",
+      "risk": "某些 venue 可能本身就不太发表该主题的论文",
+      "suggested_action": "选择 1-2 个相邻 venue 的目标，设计符合它们审稿偏好的实验方案"
+    },
+    {
+      "statement": "该领域 OA 覆盖率低（5/20），建议优先复现和对比已有 OA 方法的公开结果，系统性验证声称",
+      "novelty_score": 0.6,
+      "feasibility_score": 0.95,
+      "impact_score": 0.7,
+      "rationale": "低 OA 覆盖率 → 结果不可验证 → 存在系统性偏差风险。一份独立的可复现性验证本身就是有价值的贡献",
+      "risk": "纯验证性工作可能被认为 novelty 不足",
+      "suggested_action": "选择 10-15 篇高引 OA 论文，系统对比其声称结果和复现结果"
+    }
+  ],
+  "count": 3
+}

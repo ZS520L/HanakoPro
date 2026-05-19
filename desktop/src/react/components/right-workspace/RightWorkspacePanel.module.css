@@ -1,0 +1,426 @@
+.shell {
+    height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    gap: var(--space-sm);
+    overflow: hidden;
+}
+
+.workspaceCard {
+    --right-workspace-jian-open-height: 320px;
+    --right-workspace-jian-closed-height: 40px;
+    --right-workspace-jian-bottom: var(--space-sm);
+    --right-workspace-jian-reserved: calc(var(--right-workspace-jian-closed-height) + var(--right-workspace-jian-bottom));
+    position: relative;
+    flex: 1 1 auto;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+.workspaceHeader {
+    position: relative;
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 6px calc(var(--space-sm) + 7.5rem) 2px var(--space-md);
+}
+
+.workspaceTitle {
+    flex: 1;
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-family: "Songti SC", "Noto Serif CJK SC", serif;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--accent);
+}
+
+.tabs {
+    --right-workspace-active-tab-index: 0;
+    --right-workspace-tab-slider-offset: 0px;
+    position: relative;
+    flex: 0 0 auto;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 2px;
+    margin: 0 var(--space-sm);
+    padding: 2px;
+    border-radius: var(--radius-sm);
+    background: var(--overlay-subtle);
+    border: 1px solid var(--overlay-light);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.tabSlider {
+    position: absolute;
+    top: 2px;
+    bottom: 2px;
+    left: 2px;
+    z-index: 0;
+    width: calc((100% - 6px) / 2);
+    border-radius: max(2px, calc(var(--radius-sm) - 2px));
+    background: var(--tab-slider-bg, var(--bg-card));
+    box-shadow: var(--tab-slider-shadow, 0 1px 3px var(--shadow));
+    transform: translateX(var(--right-workspace-tab-slider-offset));
+    transition: transform var(--duration-slow) cubic-bezier(0.4, 0, 0.2, 1),
+                width var(--duration-slow) cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.tab {
+    position: relative;
+    z-index: 1;
+    min-width: 0;
+    height: 20px;
+    border: none;
+    border-radius: max(2px, calc(var(--radius-sm) - 2px));
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 400;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.tab:hover {
+    color: var(--text-muted);
+}
+
+.tabActive {
+    color: var(--text-muted);
+}
+
+.content {
+    position: relative;
+    flex: 1 1 0;
+    height: 0;
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding-top: 0;
+}
+
+.sessionFilesPanel {
+    --right-workspace-list-toolbar-height: 25px;
+    position: relative;
+    flex: 1 1 0;
+    height: 100%;
+    max-height: 100%;
+    min-height: 0;
+    display: block;
+    overflow: hidden;
+    background: transparent;
+}
+
+.sessionFilesToolbar {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 1;
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    height: var(--right-workspace-list-toolbar-height);
+    min-height: 0;
+    margin: 0 var(--space-sm);
+}
+
+.sessionFilesSortButton {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-height: 20px;
+    padding: 2px 7px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.65rem;
+    line-height: 1;
+    cursor: pointer;
+    transition: background var(--duration-fast), color var(--duration-fast);
+    white-space: nowrap;
+}
+
+.sessionFilesSortButton:hover {
+    background: var(--overlay-subtle);
+    color: var(--text);
+}
+
+.sessionFilesSortButton svg {
+    display: block;
+    flex: 0 0 auto;
+    opacity: 0.6;
+}
+
+.sessionFilesSortButton span {
+    display: inline-flex;
+    align-items: center;
+    line-height: 1;
+}
+
+.emptyState {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: var(--space-lg);
+    color: var(--text-muted);
+    font-size: 0.76rem;
+    text-align: center;
+}
+
+.fileList {
+    position: absolute;
+    top: var(--right-workspace-list-toolbar-height);
+    right: 0;
+    bottom: 0;
+    left: 0;
+    height: auto;
+    min-height: 0;
+    overflow-y: auto;
+    display: block;
+    padding: 4px 2px calc(var(--right-workspace-jian-reserved, 56px) + 8px);
+    scroll-padding-bottom: calc(var(--right-workspace-jian-reserved, 56px) + 8px);
+    outline: none;
+}
+
+.fileRow {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    height: 28px;
+    padding: 0 8px;
+    margin: 0 2px;
+    border-radius: 4px;
+    color: var(--text);
+    font-size: 0.74rem;
+    line-height: 1.4;
+    cursor: default;
+    user-select: none;
+    transition: background 0.14s var(--ease-out), color 0.14s var(--ease-out);
+}
+
+.fileRow:hover {
+    background: var(--overlay-subtle);
+}
+
+.fileRowSelected {
+    background: rgba(var(--accent-rgb), 0.1);
+}
+
+.fileRowSelected:hover {
+    background: rgba(var(--accent-rgb), 0.14);
+}
+
+.fileIcon {
+    flex: 0 0 14px;
+    width: 14px;
+    height: 14px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.fileIcon svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
+.fileMain {
+    flex: 1;
+    min-width: 0;
+}
+
+.fileName {
+    color: var(--text);
+    font-size: 0.74rem;
+    line-height: 1.4;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fileMeta {
+    display: none;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.35rem;
+    color: var(--text-muted);
+    font-size: 0.58rem;
+    line-height: 1.35;
+}
+
+.fileMeta span + span::before {
+    content: "·";
+    margin-right: 0.35rem;
+}
+
+.fileActions {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    opacity: 0;
+    transition: opacity var(--duration-instant) var(--ease-out);
+}
+
+.fileRow:hover .fileActions,
+.fileRowSelected .fileActions {
+    opacity: 1;
+}
+
+.fileAction {
+    width: 22px;
+    height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: color 0.16s var(--ease-out), background 0.16s var(--ease-out);
+}
+
+.fileAction:hover:not(:disabled) {
+    color: var(--accent);
+    background: rgba(var(--accent-rgb), 0.08);
+}
+
+.fileAction:disabled {
+    opacity: 0.35;
+    cursor: default;
+}
+
+.fileRubberBand {
+    position: fixed;
+    z-index: 5;
+    border: 1px solid rgba(var(--accent-rgb), 0.45);
+    background: rgba(var(--accent-rgb), 0.08);
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+}
+
+.jianDrawer {
+    --right-workspace-jian-open-dur: 400ms;
+    --right-workspace-jian-close-dur: var(--duration-slow);
+    --right-workspace-jian-ease: cubic-bezier(0.22, 1, 0.36, 1);
+    position: absolute;
+    left: var(--space-sm);
+    right: var(--space-sm);
+    bottom: var(--right-workspace-jian-bottom);
+    z-index: 2;
+    height: var(--right-workspace-jian-open-height);
+    max-height: none;
+    overflow: hidden;
+    margin: 0;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--jian-note-border, rgba(200, 160, 110, 0.2));
+    background: var(--jian-note-bg, #FAF0E2);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+    transition: height var(--right-workspace-jian-open-dur) var(--right-workspace-jian-ease);
+}
+
+.jianDrawer[data-open="false"] {
+    height: var(--right-workspace-jian-closed-height);
+    transition-duration: var(--right-workspace-jian-close-dur);
+}
+
+.jianDrawer[data-open="false"] .jianHeader {
+    height: var(--right-workspace-jian-closed-height);
+}
+
+.jianHeader {
+    height: 46px;
+    display: flex;
+    align-items: center;
+    padding: 0 var(--space-md);
+    border-bottom: 1px solid var(--jian-note-border, rgba(200, 160, 110, 0.2));
+}
+
+.jianRule {
+    height: 1px;
+    background: var(--jian-note-border, rgba(200, 160, 110, 0.25));
+}
+
+.jianTitle {
+    color: var(--text-light);
+    font-family: var(--font-ui);
+    font-size: 0.94rem;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+.jianToggle {
+    position: absolute;
+    right: calc(var(--space-sm) + 6px);
+    bottom: calc(var(--space-sm) + 6px);
+    z-index: 3;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid var(--overlay-light);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: border-color 0.16s var(--ease-out), color 0.16s var(--ease-out);
+}
+
+.jianToggle:hover {
+    color: var(--text-muted);
+    border-color: var(--overlay-light);
+}
+
+.jianBody {
+    height: calc(var(--right-workspace-jian-open-height) - 48px);
+    transform: translateY(0);
+    transition: transform var(--right-workspace-jian-open-dur) var(--right-workspace-jian-ease);
+}
+
+.jianDrawer[data-open="false"] .jianBody {
+    transform: translateY(24px);
+    pointer-events: none;
+    transition-duration: var(--right-workspace-jian-close-dur);
+}
+
+.jianBody :global([data-desk-editor]) {
+    height: 100%;
+    margin: 0;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    background: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .jianDrawer,
+    .jianBody {
+        transition: none !important;
+    }
+}

@@ -1,0 +1,105 @@
+/* ── Button 组件 ── */
+
+.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4em;
+    font-family: inherit;
+    font-weight: inherit;
+    line-height: 1;
+    border: 1px solid transparent;
+    border-radius: var(--radius-card);
+    cursor: pointer;
+    user-select: none;
+    -webkit-app-region: no-drag;
+    transition:
+        background var(--duration-fast) var(--ease-out),
+        color var(--duration-fast) var(--ease-out),
+        border-color var(--duration-fast) var(--ease-out),
+        opacity var(--duration-fast) var(--ease-out);
+}
+
+.btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+}
+
+.btn:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* ── 尺寸 ── */
+
+.size-sm {
+    padding: 0.3rem 0.8rem;
+    font-size: 0.78rem;
+}
+
+.size-md {
+    padding: 0.4rem 1rem;
+    font-size: 0.82rem;
+}
+
+.size-lg {
+    padding: 0.55rem 1.4rem;
+    font-size: 0.9rem;
+}
+
+/* ── 变体 ── */
+
+.variant-primary {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.variant-primary:hover:not(:disabled) {
+    background: var(--accent-hover, var(--accent));
+    border-color: var(--accent-hover, var(--accent));
+}
+
+.variant-secondary {
+    background: var(--overlay-subtle);
+    color: var(--text);
+    border-color: transparent;
+}
+
+.variant-secondary:hover:not(:disabled) {
+    background: var(--overlay-medium, var(--overlay-light));
+}
+
+.variant-ghost {
+    background: transparent;
+    color: var(--text-muted, var(--text));
+    border-color: transparent;
+}
+
+.variant-ghost:hover:not(:disabled) {
+    background: var(--overlay-subtle);
+    color: var(--text);
+}
+
+.variant-danger {
+    background: var(--danger-bg, #C0616B);
+    color: #fff;
+    border-color: var(--danger-bg, #C0616B);
+}
+
+.variant-danger:hover:not(:disabled) {
+    background: var(--danger-bg-hover, #A8505A);
+    border-color: var(--danger-bg-hover, #A8505A);
+}
+
+/* ── 加载态 spinner ── */
+
+.spinner {
+    width: 1em;
+    height: 1em;
+    border: 2px solid currentColor;
+    border-top-color: transparent;
+    border-radius: 50%;
+    animation: hana-spin 0.8s linear infinite;
+    flex-shrink: 0;
+}

@@ -1,0 +1,21 @@
+{
+  "id": "mcp",
+  "name": "Connectors",
+  "version": "0.1.0",
+  "description": "Bundled hidden Model Context Protocol bridge",
+  "trust": "full-access",
+  "hidden": true,
+  "contributes": {
+    "settingsTab": {
+      "id": "mcp",
+      "title": {
+        "zh": "连接器",
+        "zh-TW": "連接器",
+        "en": "Connectors",
+        "ja": "Connectors",
+        "ko": "Connectors"
+      },
+      "nativeComponent": "mcp.settings"
+    }
+  }
+}

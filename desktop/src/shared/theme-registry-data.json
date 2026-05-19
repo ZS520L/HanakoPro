@@ -1,0 +1,80 @@
+{
+  "storageKey": "hana-theme",
+  "defaultTheme": "warm-paper",
+  "autoLightDefault": "warm-paper",
+  "autoDarkDefault": "midnight",
+  "legacyThemeAliases": {
+    "claude-design": "new-warm-paper"
+  },
+  "paperTextureBlockedThemeIds": [
+    "midnight",
+    "midnight-contrast"
+  ],
+  "autoOption": {
+    "id": "auto",
+    "i18nName": "settings.appearance.auto",
+    "i18nMode": "settings.appearance.autoMode"
+  },
+  "themes": {
+    "warm-paper": {
+      "cssPath": "themes/warm-paper.css",
+      "backgroundColor": "#F8F5ED",
+      "i18nName": "settings.appearance.warmPaper",
+      "i18nMode": "settings.appearance.warmPaperMode"
+    },
+    "midnight": {
+      "cssPath": "themes/midnight.css",
+      "backgroundColor": "#3B4A54",
+      "i18nName": "settings.appearance.midnight",
+      "i18nMode": "settings.appearance.midnightMode"
+    },
+    "high-contrast": {
+      "cssPath": "themes/high-contrast.css",
+      "backgroundColor": "#FAF9F6",
+      "i18nName": "settings.appearance.highContrast",
+      "i18nMode": "settings.appearance.highContrastMode"
+    },
+    "grass-aroma": {
+      "cssPath": "themes/grass-aroma.css",
+      "backgroundColor": "#F5F8F3",
+      "i18nName": "settings.appearance.grassAroma",
+      "i18nMode": "settings.appearance.grassAromaMode"
+    },
+    "contemplation": {
+      "cssPath": "themes/contemplation.css",
+      "backgroundColor": "#F3F5F7",
+      "i18nName": "settings.appearance.contemplation",
+      "i18nMode": "settings.appearance.contemplationMode"
+    },
+    "absolutely": {
+      "cssPath": "themes/absolutely.css",
+      "backgroundColor": "#F4F3EE",
+      "i18nName": "settings.appearance.absolutely",
+      "i18nMode": "settings.appearance.absolutelyMode"
+    },
+    "delve": {
+      "cssPath": "themes/delve.css",
+      "backgroundColor": "#FFFFFF",
+      "i18nName": "settings.appearance.delve",
+      "i18nMode": "settings.appearance.delveMode"
+    },
+    "deep-think": {
+      "cssPath": "themes/deep-think.css",
+      "backgroundColor": "#FCFCFD",
+      "i18nName": "settings.appearance.deepThink",
+      "i18nMode": "settings.appearance.deepThinkMode"
+    },
+    "new-warm-paper": {
+      "cssPath": "themes/new-warm-paper.css",
+      "backgroundColor": "#F5EFE4",
+      "i18nName": "settings.appearance.newWarmPaper",
+      "i18nMode": "settings.appearance.newWarmPaperMode"
+    },
+    "midnight-contrast": {
+      "cssPath": "themes/midnight-contrast.css",
+      "backgroundColor": "#26343D",
+      "i18nName": "settings.appearance.midnightContrast",
+      "i18nMode": "settings.appearance.midnightContrastMode"
+    }
+  }
+}

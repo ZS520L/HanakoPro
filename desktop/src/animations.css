@@ -1,0 +1,174 @@
+/* ========================================
+   动画系统 · 规范定义
+   ========================================
+   所有 @keyframes 的唯一真相来源（single source of truth）。
+   新代码引用这里的名称；旧 .module.css 中的同名定义
+   会在后续迭代中逐步替换为此处的引用。
+   ======================================== */
+
+
+/* ── Spin ──
+   旧名：spin(×5), pv-spin, ring-spin
+   统一为 hana-spin                              */
+@keyframes hana-spin {
+    from { transform: rotate(0deg); }
+    to   { transform: rotate(360deg); }
+}
+
+/* globe-spin 独立保留：Y 轴旋转，语义不同 */
+@keyframes hana-globe-spin {
+    from { transform: rotateY(0deg); }
+    to   { transform: rotateY(360deg); }
+}
+
+
+/* ── Fade ──
+   旧名：svFadeIn, pv-add-overlay-in（纯 opacity）
+   统一为 hana-fade-in                           */
+@keyframes hana-fade-in {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+
+@keyframes hana-fade-out {
+    from { opacity: 1; }
+    to   { opacity: 0; }
+}
+
+
+/* ── Fade + Slide Y ──
+   旧名：obFadeIn(10px), msgIn(8px), dropdown-in(4px), tab-fade-in(4px)
+   统一为 hana-fade-up，位移量通过 --slide-y 控制（默认 4px，最常见的 dropdown 场景）  */
+@keyframes hana-fade-up {
+    from { opacity: 0; transform: translateY(var(--slide-y, 4px)); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes hana-fade-down {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(var(--slide-y, 4px)); }
+}
+
+
+/* ── Scale + Fade ──
+   旧名：svSlideIn（scale 0.96 + translateY 8px）  */
+@keyframes hana-scale-in {
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+/* ── Popout ──
+   下拉菜单从触发按钮位置展开。配合 transform-origin: bottom right/left 使用，
+   让菜单看起来"从按钮向上长出"。比 fade-up 更明确的"出现"语义  */
+@keyframes hana-popout {
+    from { opacity: 0; transform: scale(0.92); }
+    to   { opacity: 1; transform: scale(1); }
+}
+
+
+/* ── Slide X + Scale（浮窗）──
+   旧名：floatSlideIn / floatSlideOut              */
+@keyframes hana-slide-in-left {
+    from { opacity: 0; transform: translateX(-20px) scale(0.97); }
+    to   { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes hana-slide-out-left {
+    from { opacity: 1; transform: translateX(0) scale(1); }
+    to   { opacity: 0; transform: translateX(-12px) scale(0.97); }
+}
+
+
+/* ── Slide Y（面板从上方进出）──
+   旧名：cwdPanelIn / cwdPanelOut                  */
+@keyframes hana-slide-in-top {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes hana-slide-out-top {
+    from { opacity: 1; transform: translateY(0); }
+    to   { opacity: 0; transform: translateY(-6px); }
+}
+
+
+/* ── Slide Down（大幅度，卡片从顶部滑入）──
+   旧名：browserCardSlideDown                      */
+@keyframes hana-card-slide-down {
+    from { transform: translateY(-110%); opacity: 0; }
+    to   { transform: translateY(0);     opacity: 1; }
+}
+
+
+/* ── Pulse（呼吸灯）──
+   旧名：sessionBreathing, slash-pulse (0.3↔1)
+          subagentPulse (1↔0.6)
+          oauth-pulse (0.4↔1)
+          ss-pulse (0.6↔0.3)
+   统一为 hana-pulse，亮/暗通过 --pulse-lo/--pulse-hi 控制 */
+@keyframes hana-pulse {
+    0%, 100% { opacity: var(--pulse-lo, 0.3); }
+    50%      { opacity: var(--pulse-hi, 1); }
+}
+
+/* ── Expand（手风琴展开）──
+   旧名：compat-expand                             */
+@keyframes hana-expand {
+    from { max-height: 0; opacity: 0; }
+    to   { max-height: 800px; opacity: 1; }
+}
+
+
+/* ── Hint Fade（显示后自动淡出）──
+   旧名：pv-hint-fade                              */
+@keyframes hana-hint-fade {
+    0%, 60% { opacity: 1; }
+    100%    { opacity: 0; }
+}
+
+
+/* ── Rise + Clip（确认栏上升/收缩）──
+   旧名：session-confirmation-rise/retract          */
+@keyframes hana-rise {
+    from {
+        opacity: 0;
+        transform: translateY(24px);
+        clip-path: inset(100% 0 0 0);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+        clip-path: inset(0 0 0 0);
+    }
+}
+
+@keyframes hana-retract {
+    from {
+        opacity: 1;
+        transform: translateY(0);
+        clip-path: inset(0 0 0 0);
+    }
+    to {
+        opacity: 0;
+        transform: translateY(24px);
+        clip-path: inset(100% 0 0 0);
+    }
+}
+
+
+/* ── Typewriter Dots ──
+   旧名：typewriterDots（独特，无法归类）            */
+@keyframes hana-typewriter-dots {
+    0%, 100% { content: '\00a0'; }
+    25%      { content: '.'; }
+    50%      { content: '..'; }
+    75%      { content: '...'; }
+}
+
+
+/* ── Folder History（带 translateX 偏移的渐入）──
+   旧名：folderHistoryIn（独特：有 translateX(-50%)）*/
+@keyframes hana-folder-history-in {
+    from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+    to   { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

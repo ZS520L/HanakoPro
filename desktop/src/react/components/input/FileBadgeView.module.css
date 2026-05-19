@@ -1,0 +1,28 @@
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.32rem;
+  padding: 0.22rem 0.52rem;
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text);
+  background: color-mix(in srgb, var(--bg-secondary) 78%, var(--accent-light));
+  border: 1px solid rgba(var(--accent-rgb), 0.14);
+  border-radius: var(--radius-sm);
+  line-height: 1.35;
+  white-space: nowrap;
+  vertical-align: middle;
+  user-select: none;
+  margin-right: 0.28rem;
+}
+
+.icon {
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.name {
+  max-width: 13rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

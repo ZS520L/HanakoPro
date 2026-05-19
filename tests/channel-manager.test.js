@@ -1,0 +1,228 @@
+/**
+ * ChannelManager 单元测试
+ *
+ * 测试频道 CRUD、成员管理、新 agent 频道初始化。
+ * 使用临时目录模拟文件系统操作。
+ */
+
+import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import fs from "fs";
+import path from "path";
+import os from "os";
+
+// Mock debug-log to prevent file I/O
+import { vi } from "vitest";
+vi.mock("../lib/debug-log.js", () => ({
+  debugLog: () => null,
+  createModuleLogger: () => ({
+    log: () => {},
+    warn: () => {},
+    error: () => {},
+  }),
+}));
+
+import { ChannelManager } from "../core/channel-manager.js";
+import { readBookmarks } from "../lib/channels/channel-store.js";
+
+// ── Helpers ──
+
+function mktemp() {
+  return fs.mkdtempSync(path.join(os.tmpdir(), "hana-channel-test-"));
+}
+
+function writeChannelMd(channelsDir, name, members, intro = "") {
+  const lines = ["---"];
+  lines.push(`members: [${members.join(", ")}]`);
+  if (intro) lines.push(`intro: "${intro}"`);
+  lines.push("---", "");
+  fs.writeFileSync(path.join(channelsDir, `${name}.md`), lines.join("\n"), "utf-8");
+}
+
+function readMembers(channelsDir, name) {
+  const content = fs.readFileSync(path.join(channelsDir, `${name}.md`), "utf-8");
+  const match = content.match(/members:\s*\[([^\]]*)\]/);
+  if (!match) return [];
+  return match[1].split(",").map(s => s.trim()).filter(Boolean);
+}
+
+// ── Tests ──
+
+describe("ChannelManager", () => {
+  let tmpDir, channelsDir, agentsDir, userDir, manager;
+
+  beforeEach(() => {
+    tmpDir = mktemp();
+    channelsDir = path.join(tmpDir, "channels");
+    agentsDir = path.join(tmpDir, "agents");
+    userDir = path.join(tmpDir, "user");
+    fs.mkdirSync(channelsDir, { recursive: true });
+    fs.mkdirSync(agentsDir, { recursive: true });
+    fs.mkdirSync(userDir, { recursive: true });
+
+    manager = new ChannelManager({
+      channelsDir,
+      agentsDir,
+      userDir,
+      getHub: () => null,
+    });
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  describe("deleteChannelByName", () => {
+    it("deletes channel file", async () => {
+      writeChannelMd(channelsDir, "test-ch", ["a", "b"]);
+      expect(fs.existsSync(path.join(channelsDir, "test-ch.md"))).toBe(true);
+
+      await manager.deleteChannelByName("test-ch");
+      expect(fs.existsSync(path.join(channelsDir, "test-ch.md"))).toBe(false);
+    });
+
+    it("throws on non-existent channel", async () => {
+      await expect(manager.deleteChannelByName("nope")).rejects.toThrow(/nope/);
+    });
+
+    it("cleans up agent bookmark references", async () => {
+      writeChannelMd(channelsDir, "general", ["agent-a"]);
+
+      // Create agent dir (deleteChannelByName scans agentsDir for bookmark cleanup)
+      const agentDir = path.join(agentsDir, "agent-a");
+      fs.mkdirSync(agentDir, { recursive: true });
+
+      await manager.deleteChannelByName("general");
+
+      // Channel file should be gone
+      expect(fs.existsSync(path.join(channelsDir, "general.md"))).toBe(false);
+    });
+  });
+
+  describe("setupChannelsForNewAgent", () => {
+    it("does not create ch_crew until at least two agents exist", async () => {
+      const agentDir = path.join(agentsDir, "new-agent");
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: New\n", "utf-8");
+
+      await manager.setupChannelsForNewAgent("new-agent");
+
+      expect(fs.existsSync(path.join(channelsDir, "ch_crew.md"))).toBe(false);
+      expect(readBookmarks(path.join(agentDir, "channels.md")).has("ch_crew")).toBe(false);
+    });
+
+    it("creates ch_crew channel with all existing agents once the second agent joins", async () => {
+      const existingDir = path.join(agentsDir, "existing-agent");
+      fs.mkdirSync(existingDir, { recursive: true });
+      fs.writeFileSync(path.join(existingDir, "config.yaml"), "agent:\n  name: Existing\n", "utf-8");
+
+      const agentDir = path.join(agentsDir, "new-agent");
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: New\n", "utf-8");
+
+      await manager.setupChannelsForNewAgent("new-agent");
+
+      expect(fs.existsSync(path.join(channelsDir, "ch_crew.md"))).toBe(true);
+      const members = readMembers(channelsDir, "ch_crew");
+      expect(members).toContain("existing-agent");
+      expect(members).toContain("new-agent");
+      expect(readBookmarks(path.join(existingDir, "channels.md")).get("ch_crew")).toBe("never");
+      expect(readBookmarks(path.join(agentDir, "channels.md")).get("ch_crew")).toBe("never");
+    });
+
+    it("adds to existing ch_crew channel", async () => {
+      writeChannelMd(channelsDir, "ch_crew", ["existing-agent"]);
+
+      const agentDir = path.join(agentsDir, "new-agent");
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: New\n", "utf-8");
+
+      await manager.setupChannelsForNewAgent("new-agent");
+
+      const members = readMembers(channelsDir, "ch_crew");
+      expect(members).toContain("existing-agent");
+      expect(members).toContain("new-agent");
+    });
+
+    it("does NOT create DM channels (DM is separate system now)", async () => {
+      const existingDir = path.join(agentsDir, "alice");
+      fs.mkdirSync(existingDir, { recursive: true });
+      fs.writeFileSync(path.join(existingDir, "config.yaml"), "agent:\n  name: Alice\n", "utf-8");
+      fs.writeFileSync(path.join(existingDir, "channels.md"), "", "utf-8");
+
+      const newDir = path.join(agentsDir, "bob");
+      fs.mkdirSync(newDir, { recursive: true });
+      fs.writeFileSync(path.join(newDir, "config.yaml"), "agent:\n  name: Bob\n", "utf-8");
+
+      await manager.setupChannelsForNewAgent("bob");
+
+      // No DM channel files should exist
+      const files = fs.readdirSync(channelsDir);
+      const dmFiles = files.filter(f => !f.startsWith("ch_"));
+      expect(dmFiles).toHaveLength(0);
+    });
+
+    it("writes channels.md for new agent with ch_crew when the crew channel exists", async () => {
+      writeChannelMd(channelsDir, "ch_crew", ["existing-agent"]);
+
+      const agentDir = path.join(agentsDir, "new-agent");
+      fs.mkdirSync(agentDir, { recursive: true });
+      fs.writeFileSync(path.join(agentDir, "config.yaml"), "agent:\n  name: New\n", "utf-8");
+
+      await manager.setupChannelsForNewAgent("new-agent");
+
+      const channelsMd = fs.readFileSync(path.join(agentDir, "channels.md"), "utf-8");
+      expect(channelsMd).toContain("ch_crew");
+    });
+  });
+
+  describe("repairChannelCursorProjection", () => {
+    it("adds missing agent cursor entries from channel membership without changing channel data", async () => {
+      writeChannelMd(channelsDir, "ch_team", ["hana", "yui", "ghost"]);
+      fs.mkdirSync(path.join(agentsDir, "hana"), { recursive: true });
+      fs.writeFileSync(path.join(agentsDir, "hana", "config.yaml"), "agent:\n  name: Hana\n", "utf-8");
+      fs.writeFileSync(path.join(agentsDir, "hana", "channels.md"), "# 频道\n\n", "utf-8");
+      fs.mkdirSync(path.join(agentsDir, "yui"), { recursive: true });
+      fs.writeFileSync(path.join(agentsDir, "yui", "config.yaml"), "agent:\n  name: Yui\n", "utf-8");
+
+      await manager.repairChannelCursorProjection();
+
+      expect(readBookmarks(path.join(agentsDir, "hana", "channels.md")).get("ch_team")).toBe("never");
+      expect(readBookmarks(path.join(agentsDir, "yui", "channels.md")).get("ch_team")).toBe("never");
+      expect(fs.existsSync(path.join(agentsDir, "ghost", "channels.md"))).toBe(false);
+      expect(readMembers(channelsDir, "ch_team")).toEqual(["hana", "yui", "ghost"]);
+    });
+  });
+
+  describe("cleanupAgentFromChannels", () => {
+    it("removes agent from channel members", async () => {
+      writeChannelMd(channelsDir, "crew", ["alice", "bob", "charlie"]);
+
+      await manager.cleanupAgentFromChannels("bob");
+
+      const members = readMembers(channelsDir, "crew");
+      expect(members).toContain("alice");
+      expect(members).toContain("charlie");
+      expect(members).not.toContain("bob");
+    });
+
+    it("deletes channel when members drop to 1 or fewer", async () => {
+      writeChannelMd(channelsDir, "alice-bob", ["alice", "bob"]);
+
+      await manager.cleanupAgentFromChannels("bob");
+
+      // DM channel should be deleted (only alice left)
+      expect(fs.existsSync(path.join(channelsDir, "alice-bob.md"))).toBe(false);
+    });
+
+    it("no-ops when channelsDir does not exist", async () => {
+      const badManager = new ChannelManager({
+        channelsDir: "/nonexistent",
+        agentsDir,
+        userDir,
+        getHub: () => null,
+      });
+
+      await expect(badManager.cleanupAgentFromChannels("x")).resolves.toBeUndefined();
+    });
+  });
+});

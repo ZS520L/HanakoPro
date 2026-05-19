@@ -1,0 +1,275 @@
+/**
+ * 全局偏好设置路由（跨 agent 共享）
+ *
+ * GET  /api/preferences/models  — 读取全局模型 + 搜索配置
+ * PUT  /api/preferences/models  — 更新全局模型 + 搜索配置
+ * GET  /api/preferences/computer-use  — 读取 Computer Use provider/approval 状态
+ * PUT  /api/preferences/computer-use  — 更新 Computer Use 全局设置
+ * POST /api/preferences/computer-use/request-permissions — 请求系统权限
+ * POST /api/preferences/computer-use/approvals  — 批准 app
+ * DELETE /api/preferences/computer-use/approvals  — 撤销批准
+ */
+
+import { Hono } from "hono";
+import { emitAppEvent } from "../app-events.js";
+import { safeJson } from "../hono-helpers.js";
+import { debugLog } from "../../lib/debug-log.js";
+import { normalizeWorkspacePath } from "../../shared/workspace-history.js";
+import { normalizeWorkspaceUiEntry } from "../../shared/workspace-ui-state.js";
+import {
+  normalizeSharedModelsPatch,
+  sharedModelsPatchRequiresModelSync,
+} from "../../core/config-coordinator.js";
+import { modelSupportsImage } from "../../core/message-sanitizer.js";
+import {
+  effectiveComputerUseSettings,
+  isComputerUsePlatformSupported,
+  selectedComputerProviderId,
+} from "../../core/computer-use/platform-support.js";
+
+function selectedComputerProviderIdFromSettings(settings, platform = process.platform) {
+  return selectedComputerProviderId(settings, { platform });
+}
+
+function disabledComputerUseStatus(settings, { platform = process.platform } = {}) {
+  return {
+    enabled: false,
+    platform,
+    supported: isComputerUsePlatformSupported(platform),
+    selectedProviderId: selectedComputerProviderIdFromSettings(settings, platform),
+    providers: [],
+    activeLease: null,
+  };
+}
+
+export function createPreferencesRoute(engine, { platform = process.platform } = {}) {
+  const route = new Hono();
+
+  // 读取全局模型 + 搜索配置
+  route.get("/preferences/models", async (c) => {
+    try {
+      const models = engine.getSharedModels();
+      const search = engine.getSearchConfig();
+      const utilityApi = engine.getUtilityApi();
+
+      return c.json({
+        models,
+        search: {
+          provider: search.provider || "",
+          api_key: search.api_key || "",
+        },
+        utility_api: {
+          provider: utilityApi.provider || "",
+          base_url: utilityApi.base_url || "",
+          api_key: utilityApi.api_key || "",
+        },
+      });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  // 更新全局模型 + 搜索配置
+  route.put("/preferences/models", async (c) => {
+    try {
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+
+      const sections = [];
+      let needsModelSync = false;
+      // 共享模型与辅助视觉开关
+      if (body.models) {
+        let modelsPatch;
+        try {
+          modelsPatch = normalizeSharedModelsPatch(body.models);
+        } catch (err) {
+          return c.json({ error: err.message }, 400);
+        }
+        if (modelsPatch.vision) {
+          let resolved;
+          try {
+            resolved = engine.resolveModelWithCredentials(modelsPatch.vision);
+          } catch (err) {
+            return c.json({ error: err.message }, 400);
+          }
+          if (!modelSupportsImage(resolved?.model)) {
+            return c.json({ error: "vision model must support image input" }, 400);
+          }
+        }
+        engine.setSharedModels(modelsPatch);
+        sections.push("models");
+        needsModelSync = sharedModelsPatchRequiresModelSync(modelsPatch);
+      }
+
+      // 搜索配置
+      if (body.search) {
+        engine.setSearchConfig(body.search);
+        sections.push("search");
+      }
+
+      // utility API 配置
+      if (body.utility_api) {
+        engine.setUtilityApi(body.utility_api);
+        sections.push("utility_api");
+      }
+
+      if (needsModelSync) {
+        await engine.syncModelsAndRefresh();
+      }
+
+      debugLog()?.log("api", `PUT /api/preferences/models sections=[${sections.join(",")}]`);
+      if (sections.length > 0) {
+        emitAppEvent(engine, "models-changed", { agentId: engine.currentAgentId || null });
+      }
+      return c.json({ ok: true });
+    } catch (err) {
+      debugLog()?.error("api", `PUT /api/preferences/models failed: ${err.message}`);
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.get("/preferences/workspace-ui-state", async (c) => {
+    try {
+      const workspace = normalizeWorkspacePath(c.req.query("workspace"));
+      if (!workspace) return c.json({ error: "workspace must be a non-empty path" }, 400);
+      if (typeof engine.getWorkspaceUiState !== "function") {
+        return c.json({ error: "workspace UI state unavailable" }, 500);
+      }
+      return c.json({ state: engine.getWorkspaceUiState(workspace) });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.put("/preferences/workspace-ui-state", async (c) => {
+    try {
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const workspace = normalizeWorkspacePath(body.workspace);
+      if (!workspace) return c.json({ error: "workspace must be a non-empty path" }, 400);
+      if (typeof engine.setWorkspaceUiState !== "function") {
+        return c.json({ error: "workspace UI state unavailable" }, 500);
+      }
+      const state = engine.setWorkspaceUiState(workspace, normalizeWorkspaceUiEntry(body.state || {}));
+      return c.json({ ok: true, state });
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.get("/preferences/plugin-ui", async (c) => {
+    try {
+      return c.json(engine.getPluginUiPrefs());
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.put("/preferences/plugin-ui", async (c) => {
+    try {
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const result = engine.setPluginUiPrefs(body);
+      return c.json({ ok: true, ...result });
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.get("/preferences/computer-use", async (c) => {
+    try {
+      const settings = effectiveComputerUseSettings(engine.getComputerUseSettings(), { platform });
+      if (settings?.enabled !== true) {
+        const status = disabledComputerUseStatus(settings, { platform });
+        return c.json({
+          settings,
+          status,
+          selectedProviderId: status.selectedProviderId,
+        });
+      }
+      const status = await engine.getComputerHost?.()?.getStatus?.({}) || null;
+      return c.json({
+        settings,
+        status,
+        selectedProviderId: status?.selectedProviderId || selectedComputerProviderIdFromSettings(settings, platform),
+      });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.put("/preferences/computer-use", async (c) => {
+    try {
+      if (!isComputerUsePlatformSupported(platform)) {
+        return c.json({ error: "Computer Use is not supported on Linux Preview." }, 400);
+      }
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const settings = engine.setComputerUseSettings(body.settings && typeof body.settings === "object" ? body.settings : body);
+      debugLog()?.log("api", "PUT /api/preferences/computer-use");
+      emitAppEvent(engine, "computer-use-settings-changed", { selectedProviderId: selectedComputerProviderIdFromSettings(settings, platform) });
+      return c.json({ ok: true, settings });
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.post("/preferences/computer-use/request-permissions", async (c) => {
+    try {
+      if (!isComputerUsePlatformSupported(platform)) {
+        return c.json({ error: "Computer Use is not supported on Linux Preview." }, 400);
+      }
+      const body = await safeJson(c);
+      const providerId = body && typeof body === "object" ? body.providerId || null : null;
+      const result = await engine.getComputerHost?.()?.requestPermissions?.({}, providerId);
+      emitAppEvent(engine, "computer-use-permissions-requested", { providerId: providerId || result?.providerId || null });
+      return c.json({ ok: true, result });
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.post("/preferences/computer-use/approvals", async (c) => {
+    try {
+      if (!isComputerUsePlatformSupported(platform)) {
+        return c.json({ error: "Computer Use is not supported on Linux Preview." }, 400);
+      }
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const settings = engine.approveComputerUseApp(body);
+      emitAppEvent(engine, "computer-use-settings-changed", { providerId: body.providerId || null, appId: body.appId || null });
+      return c.json({ ok: true, settings });
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
+  route.delete("/preferences/computer-use/approvals", async (c) => {
+    try {
+      if (!isComputerUsePlatformSupported(platform)) {
+        return c.json({ error: "Computer Use is not supported on Linux Preview." }, 400);
+      }
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const settings = engine.revokeComputerUseApp(body);
+      emitAppEvent(engine, "computer-use-settings-changed", { providerId: body.providerId || null, appId: body.appId || null });
+      return c.json({ ok: true, settings });
+    } catch (err) {
+      return c.json({ error: err.message }, 400);
+    }
+  });
+
+  return route;
+}

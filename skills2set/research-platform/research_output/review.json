@@ -1,0 +1,33 @@
+{
+  "issues": [
+    {
+      "severity": "中等",
+      "category": "Related Work",
+      "description": "可能遗漏 10 篇高引相关工作。UKG Top 10 高引论文中有 10 篇未在论文中出现。",
+      "suggestion": "检查是否需要在 Related Work 中补充引用以下论文 [列出具体标题]",
+      "auto_fix": true
+    },
+    {
+      "severity": "高",
+      "category": "统计规范",
+      "description": "论文中未发现统计显著性报告（p 值）。所有主结果应附带 p 值或等效检验。",
+      "suggestion": "在实验结果表中追加统计检验结果（推荐 paired t-test + Bonferroni 校正）",
+      "auto_fix": false
+    },
+    {
+      "severity": "中等",
+      "category": "统计规范",
+      "description": "论文未报告效应量。仅有 p 值不足以评估提升的实际意义。",
+      "suggestion": "追加 Cohen's d 或相对提升百分比",
+      "auto_fix": true
+    },
+    {
+      "severity": "低",
+      "category": "可复现性",
+      "description": "仅 5/20 篇引用论文可获取全文（OA）。建议在论文中讨论复现限制。",
+      "suggestion": "明确标注哪些 baseline 结果来自原始论文报告值而非复现值",
+      "auto_fix": true
+    }
+  ],
+  "total": 4
+}

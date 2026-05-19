@@ -1,0 +1,42 @@
+.overlay {
+  position: absolute;
+  inset: var(--titlebar-h, 44px) 0 0 0;
+  pointer-events: none;
+  z-index: 64;
+  overflow: hidden;
+  -webkit-app-region: no-drag;
+}
+
+.takeoverNotice {
+  position: absolute;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(680px, calc(100% - 40px));
+  padding: 8px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent, #537d96) 34%, var(--border, #ded8cf));
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--bg-card, #fcfaf5) 96%, var(--accent, #537d96) 4%),
+      color-mix(in srgb, var(--bg, #f7f2ea) 94%, var(--accent, #537d96) 6%));
+  box-shadow: 0 10px 28px rgba(var(--accent-rgb, 83, 125, 150), 0.16);
+  color: var(--text, #2a2622);
+  font-size: 0.76rem;
+  line-height: 1.45;
+  z-index: 2;
+}
+
+.takeoverNotice strong {
+  flex: 0 0 auto;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--text, #2a2622) 88%, var(--accent, #537d96) 12%);
+}
+
+.takeoverNotice span {
+  min-width: 0;
+  color: var(--text-muted, #8c887f);
+}
