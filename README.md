@@ -46,6 +46,14 @@ HanakoPro 支持在对话中直接展示 AI 对文件的修改结果。新增、
   <img src="image/terminal.png" width="100%" alt="HanakoPro 内置终端实时日志">
 </p>
 
+### 全自动科研创新点挖掘
+
+AI可以自主制定计划、编写代码、运行代码、分析结果、循环调优，直到完成目标。
+
+<p align="center">
+  <img src="image/全自动科研.png" width="100%" alt="HanakoPro 内置终端实时日志">
+</p>
+
 ### 消息撤回
 
 支持撤回消息，方便在误发送、上下文不合适或想重新组织指令时回退对话。
