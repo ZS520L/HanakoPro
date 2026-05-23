@@ -17,7 +17,7 @@ import { createSkillSourceIdentity } from "../../lib/skills/skill-file-identity.
 import { WORKSPACE_SKILL_DIRS } from "../../shared/workspace-skill-paths.js";
 import { t } from "../i18n.js";
 import { resolveAgent } from "../utils/resolve-agent.js";
-import { realPath, isSensitivePath } from "../utils/path-security.js";
+import { realPath, isSensitivePath, assertNoSymlinksSync } from "../utils/path-security.js";
 
 /** 安全路径校验：target 必须在 baseDir 内部（解析 symlink 后比较） */
 function isInsidePath(target, baseDir) {
@@ -673,6 +673,7 @@ export function createDeskRoute(engine, hub) {
               results.push({ src: srcPath, error: "sensitive path blocked" });
               continue;
             }
+            assertNoSymlinksSync(srcPath);
             const fname = path.basename(srcPath);
             const dest = path.join(dir, fname);
             const stat = fs.statSync(srcPath);

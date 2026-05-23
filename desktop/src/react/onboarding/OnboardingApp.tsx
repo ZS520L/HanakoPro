@@ -17,10 +17,10 @@ import {
   type ServerConnection,
 } from '../services/server-connection';
 
-interface OnboardingAppProps { preview: boolean; skipToTutorial: boolean }
-export function OnboardingApp({ preview, skipToTutorial }: OnboardingAppProps) {
+interface OnboardingAppProps { preview: boolean; skipToTutorial: boolean; skipToModelSetup?: boolean }
+export function OnboardingApp({ preview, skipToTutorial, skipToModelSetup = false }: OnboardingAppProps) {
   const [serverConnection, setServerConnection] = useState<ServerConnection | null>(null);
-  const [step, setStep] = useState(skipToTutorial ? 6 : 0);
+  const [step, setStep] = useState(skipToTutorial ? 6 : (skipToModelSetup ? 2 : 0));
   const [stepKey, setStepKey] = useState(0);
   const [agentName, setAgentName] = useState('Hanako');
   const [avatarSrc, setAvatarSrc] = useState('assets/Hanako.png');

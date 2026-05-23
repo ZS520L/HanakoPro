@@ -43,8 +43,10 @@ const i18n = {
         try {
           const fb = await fetch("./locales/en.json");
           this._data = await fb.json();
-        } catch { this._data = {}; }
-      } else {
+        } catch {
+          if (!this._data || Object.keys(this._data).length === 0) this._data = {};
+        }
+      } else if (!this._data || Object.keys(this._data).length === 0) {
         this._data = {};
       }
     }

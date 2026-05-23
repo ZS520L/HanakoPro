@@ -773,6 +773,99 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     expect(payload.messages[1]).toHaveProperty("reasoning_content");
   });
 
+  it("DeepSeek Beta strict 开关开启时为工具调用注入 strict schema", () => {
+    const payload = {
+      model: "deepseek-v4-pro",
+      messages: [{ role: "user", content: "look up date" }],
+      tools: [{
+        type: "function",
+        function: {
+          name: "date",
+          parameters: {
+            type: "object",
+            properties: {
+              city: { type: "string", minLength: 1, maxLength: 80 },
+              tags: { type: "array", minItems: 1, maxItems: 3, items: { type: "string" } },
+              options: {
+                type: "object",
+                properties: {
+                  unit: { type: "string", enum: ["c", "f"] },
+                  contact: {
+                    oneOf: [
+                      { type: "string", format: "email" },
+                      { type: "string", pattern: "^\\d{11}$" },
+                    ],
+                  },
+                },
+              },
+            },
+            $defs: {
+              location: {
+                type: "object",
+                properties: {
+                  name: { type: "string" },
+                },
+              },
+            },
+          },
+        },
+      }],
+      reasoning_effort: "medium",
+      max_completion_tokens: 32000,
+    };
+    const result = normalizeProviderPayload(payload, {
+      ...deepseekModel,
+      compat: { deepseekBetaStrictTools: true },
+    }, { mode: "chat" });
+    const fn = result.tools[0].function;
+    expect(fn.strict).toBe(true);
+    expect(fn.parameters).toMatchObject({
+      required: ["city", "tags", "options"],
+      additionalProperties: false,
+      properties: {
+        city: { type: "string" },
+        tags: { type: "array", items: { type: "string" } },
+        options: {
+          required: ["unit", "contact"],
+          additionalProperties: false,
+          properties: {
+            contact: {
+              anyOf: [
+                { type: "string", format: "email" },
+                { type: "string", pattern: "^\\d{11}$" },
+              ],
+            },
+          },
+        },
+      },
+      $def: {
+        location: {
+          type: "object",
+          required: ["name"],
+          additionalProperties: false,
+        },
+      },
+    });
+    expect(fn.parameters.properties.city).not.toHaveProperty("minLength");
+    expect(fn.parameters.properties.city).not.toHaveProperty("maxLength");
+    expect(fn.parameters.properties.tags).not.toHaveProperty("minItems");
+    expect(fn.parameters.properties.tags).not.toHaveProperty("maxItems");
+    expect(fn.parameters.properties.options.properties.contact).not.toHaveProperty("oneOf");
+    expect(fn.parameters).not.toHaveProperty("$defs");
+    expect(payload.tools[0].function.strict).toBeUndefined();
+    expect(payload.tools[0].function.parameters.required).toBeUndefined();
+  });
+
+  it("DeepSeek Beta strict 开关默认关闭，不改工具定义", () => {
+    const payload = {
+      model: "deepseek-v4-pro",
+      messages: [{ role: "user", content: "look up date" }],
+      tools: [{ type: "function", function: { name: "date", parameters: { type: "object" } } }],
+    };
+    const result = normalizeProviderPayload(payload, deepseekModel, { mode: "chat" });
+    expect(result.tools[0].function.strict).toBeUndefined();
+  });
+
   it("DeepSeek v4 即使缺少本地 reasoning 标记，也按默认思考模式防护", () => {
     const payload = {
       model: "deepseek-v4-pro",

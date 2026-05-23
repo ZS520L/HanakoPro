@@ -125,6 +125,7 @@ export function createConfigRoute(engine) {
           base_url: p.base_url || entry?.baseUrl || "",
           api: p.api || entry?.api || "",
           api_key: p.api_key || "",
+          deepseek_beta_strict_tools: p.deepseek_beta_strict_tools === true,
           models: p.models || [],
           model_count: (p.models || []).length,
         };

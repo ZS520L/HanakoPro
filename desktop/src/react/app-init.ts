@@ -57,6 +57,23 @@ window.addEventListener('unhandledrejection', (e) => {
   _errorBus.report(_AppError.wrap(e.reason));
 });
 
+async function loadStartupSidebarBadges(): Promise<void> {
+  await Promise.allSettled([
+    (async () => {
+      const res = await hanaFetch('/api/desk/cron');
+      const data = await res.json();
+      const count = (data.jobs || []).length;
+      useStore.setState({ automationCount: count });
+    })(),
+    (async () => {
+      const res = await hanaFetch('/api/bridge/status');
+      const data = await res.json();
+      const anyConnected = data.telegram?.status === 'connected' || data.feishu?.status === 'connected' || data.qq?.status === 'connected' || data.wechat?.status === 'connected' || data.whatsapp?.status === 'connected';
+      useStore.setState({ bridgeDotConnected: anyConnected });
+    })(),
+  ]);
+}
+
 // ── 主初始化流程 ──
 
 export async function initApp(): Promise<void> {
@@ -154,22 +171,6 @@ export async function initApp(): Promise<void> {
   // 13. 初始 layout 计算
   updateLayout();
 
-  // 14. 任务计划 badge 初始值
-  try {
-    const res = await hanaFetch('/api/desk/cron');
-    const data = await res.json();
-    const count = (data.jobs || []).length;
-    useStore.setState({ automationCount: count });
-  } catch { /* ignore */ }
-
-  // 15. Bridge 状态指示点（启动时就查一次，不等用户打开面板）
-  try {
-    const res = await hanaFetch('/api/bridge/status');
-    const data = await res.json();
-    const anyConnected = data.telegram?.status === 'connected' || data.feishu?.status === 'connected' || data.qq?.status === 'connected' || data.wechat?.status === 'connected' || data.whatsapp?.status === 'connected';
-    useStore.setState({ bridgeDotConnected: anyConnected });
-  } catch { /* ignore */ }
-
   // 16. 加载插件 UI（pages / widgets）
   refreshPluginUI();
 
@@ -198,4 +199,5 @@ export async function initApp(): Promise<void> {
 
   // 22. 通知 app ready
   platform.appReady();
+  void loadStartupSidebarBadges();
 }

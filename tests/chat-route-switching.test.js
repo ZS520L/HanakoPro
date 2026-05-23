@@ -97,6 +97,114 @@ describe("chat route streaming error lifecycle", () => {
       expect.objectContaining({ type: "status", isStreaming: false, sessionPath: "/tmp/session.jsonl" }),
     ]));
   });
+
+  it("keeps streaming status active when session_status false arrives before late deltas and turn_end", () => {
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((cb) => {
+        subscriber = cb;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => null),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = {
+      readyState: 1,
+      send: vi.fn(),
+    };
+
+    handlers.onOpen({}, ws);
+    subscriber({ type: "session_status", isStreaming: true }, "/tmp/session.jsonl");
+    subscriber({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "第一段" } }, "/tmp/session.jsonl");
+    subscriber({ type: "session_status", isStreaming: false }, "/tmp/session.jsonl");
+
+    let sent = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    expect(sent.filter(msg => msg.type === "status" && msg.isStreaming === false)).toHaveLength(0);
+
+    subscriber({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "第二段" } }, "/tmp/session.jsonl");
+    subscriber({ type: "turn_end" }, "/tmp/session.jsonl");
+
+    sent = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    const lateDeltaIndex = sent.findIndex(msg => msg.type === "text_delta" && msg.delta === "第二段");
+    const turnEndIndex = sent.findIndex(msg => msg.type === "turn_end");
+    const statusFalseIndex = sent.findIndex(msg => msg.type === "status" && msg.isStreaming === false);
+    expect(lateDeltaIndex).toBeGreaterThan(-1);
+    expect(turnEndIndex).toBeGreaterThan(lateDeltaIndex);
+    expect(statusFalseIndex).toBeGreaterThan(turnEndIndex);
+  });
+
+  it("does not close streaming on provider turn_end before tool execution continues", () => {
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((cb) => {
+        subscriber = cb;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => null),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = {
+      readyState: 1,
+      send: vi.fn(),
+    };
+
+    handlers.onOpen({}, ws);
+    subscriber({ type: "session_status", isStreaming: true }, "/tmp/session.jsonl");
+    subscriber({ type: "message_update", assistantMessageEvent: { type: "toolcall_start" } }, "/tmp/session.jsonl");
+    subscriber({ type: "turn_end" }, "/tmp/session.jsonl");
+
+    let sent = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    expect(sent.filter(msg => msg.type === "turn_end")).toHaveLength(0);
+    expect(sent.filter(msg => msg.type === "status" && msg.isStreaming === false)).toHaveLength(0);
+
+    subscriber({ type: "tool_execution_start", toolName: "browser", args: { action: "navigate", url: "https://example.com" } }, "/tmp/session.jsonl");
+    subscriber({ type: "tool_execution_end", toolName: "browser", result: { details: { running: true, url: "https://example.com" } } }, "/tmp/session.jsonl");
+    subscriber({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "工具后继续输出" } }, "/tmp/session.jsonl");
+    subscriber({ type: "turn_end" }, "/tmp/session.jsonl");
+
+    sent = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    expect(sent.filter(msg => msg.type === "status" && msg.isStreaming === false)).toHaveLength(0);
+
+    subscriber({ type: "session_status", isStreaming: false }, "/tmp/session.jsonl");
+
+    sent = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    const textIndex = sent.findIndex(msg => msg.type === "text_delta" && msg.delta === "工具后继续输出");
+    const turnEndIndex = sent.findIndex(msg => msg.type === "turn_end");
+    const statusFalseIndex = sent.findIndex(msg => msg.type === "status" && msg.isStreaming === false);
+    expect(textIndex).toBeGreaterThan(-1);
+    expect(turnEndIndex).toBeGreaterThan(textIndex);
+    expect(statusFalseIndex).toBeGreaterThan(turnEndIndex);
+  });
 });
 
 describe("chat route interrupt prompt", () => {

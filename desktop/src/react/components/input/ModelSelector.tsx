@@ -4,12 +4,15 @@ import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { useI18n } from '../../hooks/use-i18n';
 import type { Model } from '../../types';
 import type { SessionModel } from '../../stores/chat-types';
+import type { ModelsLoadState } from '../../stores/model-slice';
+import { openProviderModelSettings } from '../../utils/model-settings-navigation';
 import styles from './InputArea.module.css';
 
-export function ModelSelector({ models, sessionModel, isStreaming = false }: {
+export function ModelSelector({ models, sessionModel, isStreaming = false, loadState }: {
   models: Model[];
   sessionModel?: SessionModel;
   isStreaming?: boolean;
+  loadState?: ModelsLoadState;
 }) {
   const { t } = useI18n();
   const [open, setOpen] = useState(false);
@@ -24,7 +27,8 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
     : models.find(m => m.isCurrent);
   const sessionModelUnavailable = !!(sessionModel?.id && sessionModel.provider && models.length > 0 && !matchedSessionModel);
   const label = (() => {
-    if (loading) return '...';
+    if (loading || loadState === 'loading' || loadState === 'idle') return t('model.loading') || '...';
+    if (loadState === 'error') return t('model.loadFailed') || '...';
     if (sessionModelUnavailable) return t('model.unavailable') || '...';
     if (current?.name) return current.name;
     if (models.length > 0) return t('model.notSelected') || t('model.unknown') || '...';
@@ -137,14 +141,18 @@ export function ModelSelector({ models, sessionModel, isStreaming = false }: {
   return (
     <div className={`${styles['model-selector']}${open ? ` ${styles.open}` : ''}`} ref={ref}>
       <button
-        className={`${styles['model-pill']}${loading ? ` ${styles['model-pill-disabled']}` : ''}`}
+        className={`${styles['model-pill']}${(loading || loadState === 'loading' || loadState === 'idle') ? ` ${styles['model-pill-disabled']}` : ''}`}
         onClick={(e) => {
           e.stopPropagation();
-          if (loading) return;
+          if (loading || loadState === 'loading' || loadState === 'idle') return;
           if (isStreaming) {
             useStore.getState().addToast(t('model.switchWhileStreaming'), 'warning', 4000, {
               dedupeKey: 'model-switch-streaming',
             });
+            return;
+          }
+          if (loadState === 'error' || models.length === 0) {
+            openProviderModelSettings();
             return;
           }
           setOpen(!open);

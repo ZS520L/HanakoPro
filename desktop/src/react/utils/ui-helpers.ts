@@ -26,6 +26,7 @@ export function showError(message: string): void {
 // ── 模型加载 ──
 
 export async function loadModels(): Promise<void> {
+  useStore.setState({ modelsLoadState: 'loading' });
   try {
     const res = await hanaFetch('/api/models');
     const data = await res.json();
@@ -46,7 +47,10 @@ export async function loadModels(): Promise<void> {
     useStore.setState({
       models,
       currentModel: currentModelObj ? { id: currentModelObj.id, provider: currentModelObj.provider } : null,
+      modelsLoadState: models.length > 0 ? 'ready' : 'empty',
     });
-  } catch { /* silent */ }
+  } catch {
+    useStore.setState({ modelsLoadState: 'error' });
+  }
 }
 

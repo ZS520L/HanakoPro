@@ -94,7 +94,7 @@ describe('ws stream lifecycle after abort', () => {
     useStore.getState().initSession(PATH, [userItem('u1', 'start project')], false);
   });
 
-  it('status=false ends the local turn binding so the next reply lands after the new user message', () => {
+  it('aborted status=false ends the local turn binding so the next reply lands after the new user message', () => {
     handleServerMessage({
       type: 'text_delta',
       sessionPath: PATH,
@@ -105,6 +105,7 @@ describe('ws stream lifecycle after abort', () => {
       type: 'status',
       sessionPath: PATH,
       isStreaming: false,
+      aborted: true,
     });
 
     handleServerMessage({
@@ -134,7 +135,35 @@ describe('ws stream lifecycle after abort', () => {
     expect(textBlockHtml(items[3])).toContain('new answer');
   });
 
-  it('status=false marks unfinished tools as failed instead of leaving them running', () => {
+  it('plain status=false does not end the local turn before late deltas arrive', () => {
+    handleServerMessage({
+      type: 'text_delta',
+      sessionPath: PATH,
+      delta: 'old partial',
+    });
+
+    handleServerMessage({
+      type: 'status',
+      sessionPath: PATH,
+      isStreaming: false,
+    });
+
+    handleServerMessage({
+      type: 'text_delta',
+      sessionPath: PATH,
+      delta: ' late tail',
+    });
+    handleServerMessage({
+      type: 'turn_end',
+      sessionPath: PATH,
+    });
+
+    const items = messageItems();
+    expect(items.map((item) => item.role)).toEqual(['user', 'assistant']);
+    expect(textBlockHtml(items[1])).toContain('old partial late tail');
+  });
+
+  it('aborted status=false marks unfinished tools as failed instead of leaving them running', () => {
     handleServerMessage({
       type: 'tool_start',
       sessionPath: PATH,
@@ -149,6 +178,7 @@ describe('ws stream lifecycle after abort', () => {
       type: 'status',
       sessionPath: PATH,
       isStreaming: false,
+      aborted: true,
     });
 
     items = messageItems();

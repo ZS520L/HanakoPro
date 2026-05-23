@@ -51,6 +51,32 @@ describe("local startup contract", () => {
     );
   });
 
+  it("desktop main reopens model setup when imported completed setup has no usable models", () => {
+    const mainCjs = fs.readFileSync(path.join(ROOT, "desktop", "main.cjs"), "utf-8");
+    const onboardingMain = fs.readFileSync(path.join(ROOT, "desktop", "src", "onboarding-main.tsx"), "utf-8");
+    const onboardingApp = fs.readFileSync(path.join(ROOT, "desktop", "src", "react", "onboarding", "OnboardingApp.tsx"), "utf-8");
+
+    expect(mainCjs).toContain("needsModelSetupAfterStartup");
+    expect(mainCjs).toContain("/api/models");
+    expect(mainCjs).toContain("wouldSkipModelSetup: setupComplete || existingConfig");
+    expect(mainCjs).toContain('createOnboardingWindow({ skipToModelSetup: "1" })');
+    expect(onboardingMain).toContain("skipToModelSetup");
+    expect(onboardingApp).toContain("skipToModelSetup ? 2 : 0");
+  });
+
+  it("desktop main does not delay first-run onboarding behind the fixed splash minimum", () => {
+    const mainCjs = fs.readFileSync(path.join(ROOT, "desktop", "main.cjs"), "utf-8");
+
+    expect(mainCjs).toContain("const opensOnboarding = forceModelSetup || !setupComplete");
+    expect(mainCjs).toContain("if (!opensOnboarding && splashWindow && elapsed < minSplashMs)");
+    expect(mainCjs.indexOf("const opensOnboarding = forceModelSetup || !setupComplete")).toBeLessThan(
+      mainCjs.indexOf("if (!opensOnboarding && splashWindow && elapsed < minSplashMs)"),
+    );
+    expect(mainCjs.indexOf("if (!opensOnboarding && splashWindow && elapsed < minSplashMs)")).toBeLessThan(
+      mainCjs.indexOf("if (forceModelSetup)"),
+    );
+  });
+
   it("keeps jsdom external in the server bundle for packaged runtime", () => {
     const external = viteServerConfig.build?.rollupOptions?.external || [];
 

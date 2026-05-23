@@ -188,6 +188,7 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
   const activeTabId = useStore(selectActiveTabId);
   const previewOpen = useStore(s => s.previewOpen);
   const models = useStore(s => s.models);
+  const modelsLoadState = useStore(s => s.modelsLoadState);
   const agentYuan = useStore(s => s.agentYuan);
   const welcomeVisible = useStore(s => s.welcomeVisible);
   const thinkingLevel = useStore(s => s.thinkingLevel);
@@ -615,7 +616,15 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
   const hasContent = inputText.trim().length > 0 || attachedFiles.length > 0 || docContextAttached || !!quotedSelection
     || editorHasInlineNode(editor, 'skillBadge')
     || editorHasInlineNode(editor, 'fileBadge');
-  const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath;
+  const hasUsableModel = !!currentModelInfo;
+  const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && hasUsableModel;
+  const modelNoticeText = modelsLoadState === 'error'
+    ? t('model.loadFailedHint')
+    : modelsLoadState === 'empty'
+      ? t('model.noneConfiguredHint')
+      : (modelsLoadState === 'ready' && models.length > 0 && !currentModelInfo)
+        ? t('model.notSelectedHint')
+        : '';
 
   const loadVisionAuxiliaryConfig = useCallback(async () => {
     const res = await hanaFetch('/api/preferences/models');
@@ -1100,6 +1109,18 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
           />
         )}
         <div className={styles['input-wrapper']} ref={cardRef}>
+          {modelNoticeText && (
+            <div className={styles['model-status-bar']}>
+              <span className={styles['model-status-text']}>{modelNoticeText}</span>
+              <button
+                type="button"
+                className={styles['model-status-action']}
+                onClick={() => openProviderModelSettings(currentModelInfo?.provider)}
+              >
+                {models.length > 0 ? t('model.selectAction') : t('model.configureAction')}
+              </button>
+            </div>
+          )}
           <div
             onMouseDown={() => {
               if (!editor || editor.isDestroyed) return;
@@ -1131,6 +1152,7 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
             onThinkingChange={setThinkingLevel}
             modelXhigh={(sessionModel ? (sessionModel.xhigh ?? models.find(m => m.id === sessionModel.id && m.provider === sessionModel.provider)?.xhigh) : globalModelInfo?.xhigh) ?? false}
             models={models}
+            modelsLoadState={modelsLoadState}
             sessionModel={sessionModel}
             isStreaming={isStreaming}
             hasInput={!!inputText.trim()}

@@ -1507,14 +1507,16 @@
     display: flex;
     flex-direction: column;
     margin: 6px 0 8px;
-    max-width: 720px;
-    border: 1px solid var(--border);
+    width: min(100%, 860px);
+    min-width: min(560px, 100%);
+    box-sizing: border-box;
+    border: 1px solid rgba(92, 178, 141, 0.22);
     border-radius: var(--radius-chat-card);
-    background: #1e1e1e;
-    color: #e5e5e5;
-    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    background: linear-gradient(180deg, rgba(34, 42, 37, 0.96), rgba(25, 31, 28, 0.98));
+    color: rgba(236, 243, 238, 0.94);
+    font-family: var(--font-mono, ui-monospace, "SF Mono", Menlo, Consolas, monospace);
     overflow: hidden;
-    box-shadow: 0 1px 3px var(--shadow);
+    box-shadow: 0 10px 24px rgba(18, 45, 32, 0.12), 0 1px 3px var(--shadow);
 }
 
 .terminalCardHeader {
@@ -1523,8 +1525,8 @@
     justify-content: space-between;
     gap: 8px;
     padding: 6px 10px;
-    background: rgba(255, 255, 255, 0.04);
-    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(238, 250, 243, 0.055);
+    border-bottom: 1px solid rgba(180, 220, 198, 0.14);
     font-family: var(--font-family);
 }
 
@@ -1539,13 +1541,13 @@
 .terminalCardIcon {
     display: inline-flex;
     align-items: center;
-    color: #9aa0a6;
+    color: rgba(163, 213, 186, 0.78);
     flex-shrink: 0;
 }
 
 .terminalCardTitle {
     font-size: 0.78rem;
-    color: #d0d3d8;
+    color: rgba(238, 246, 241, 0.88);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -1560,13 +1562,13 @@
 }
 
 .terminalCardStatusAlive {
-    background: rgba(80, 200, 120, 0.18);
-    color: #5ad48d;
+    background: rgba(56, 198, 125, 0.18);
+    color: #68d99b;
 }
 
 .terminalCardStatusDead {
-    background: rgba(160, 160, 160, 0.18);
-    color: #b8b8b8;
+    background: rgba(185, 195, 188, 0.14);
+    color: rgba(218, 226, 221, 0.72);
 }
 
 .terminalCardJump {
@@ -1576,7 +1578,7 @@
     width: 22px;
     height: 22px;
     background: transparent;
-    color: #9aa0a6;
+    color: rgba(198, 223, 210, 0.66);
     border: 1px solid transparent;
     border-radius: 4px;
     cursor: pointer;
@@ -1585,8 +1587,8 @@
 }
 
 .terminalCardJump:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: #e5e5e5;
+    background: rgba(229, 247, 237, 0.1);
+    color: rgba(245, 250, 247, 0.96);
 }
 
 .terminalCardBody {
@@ -1594,16 +1596,18 @@
     padding: 8px 10px;
     font-size: 0.78rem;
     line-height: 1.45;
-    color: #d0d3d8;
+    color: rgba(229, 238, 233, 0.9);
     white-space: pre-wrap;
-    word-break: break-all;
+    overflow-wrap: anywhere;
+    word-break: normal;
     max-height: min(60vh, 480px);
-    overflow-y: auto;
-    background: #1e1e1e;
+    overflow: auto;
+    background: transparent;
+    scrollbar-color: rgba(158, 198, 177, 0.45) transparent;
 }
 
 .terminalCardEmpty {
-    color: #6b7077;
+    color: rgba(188, 207, 196, 0.54);
     font-style: italic;
 }
 

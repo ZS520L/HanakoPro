@@ -62,6 +62,7 @@ export function createProvidersRoute(engine) {
         base_url: p.base_url || entry?.baseUrl || "",
         api_key: p.api_key || "",
         api: p.api || entry?.api || "",
+        deepseek_beta_strict_tools: p.deepseek_beta_strict_tools === true,
         models: p.models || [],
         config_error: p._config_error || null,
       };
@@ -117,6 +118,7 @@ export function createProvidersRoute(engine) {
         base_url: p.base_url || "",
         api: p.api || "",
         api_key: p.api_key || "",
+        deepseek_beta_strict_tools: p.deepseek_beta_strict_tools === true,
         models: rawModels,
         custom_models: customModels,
         has_credentials: hasCredentials,
@@ -171,6 +173,7 @@ export function createProvidersRoute(engine) {
           base_url: entry.baseUrl || "",
           api: entry.api || "",
           api_key: "",
+          deepseek_beta_strict_tools: false,
           models: [],
           custom_models: [],
           has_credentials: false,

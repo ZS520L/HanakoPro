@@ -14,6 +14,7 @@ import { validateProviderModels } from "../shared/provider-model-validation.js";
 
 const DEFAULT_CONTEXT_WINDOW = 128_000;
 const PI_BUILTIN_PROVIDER_REUSE = new Set(["kimi-coding"]);
+const DEEPSEEK_BETA_STRICT_TOOLS_FLAG = "deepseek_beta_strict_tools";
 
 /**
  * 模型 ID → 人类可读名
@@ -82,12 +83,27 @@ function buildModelOverride(modelEntry) {
   return Object.keys(finalOverride).length > 0 ? finalOverride : null;
 }
 
+function withDeepSeekBetaBaseUrl(baseUrl) {
+  const trimmed = String(baseUrl || "").trim().replace(/\/+$/, "");
+  if (!trimmed || /\/beta$/i.test(trimmed)) return trimmed;
+  try {
+    const url = new URL(trimmed);
+    if (url.hostname.toLowerCase() === "api.deepseek.com") {
+      url.pathname = "/beta";
+      url.search = "";
+      url.hash = "";
+      return url.toString().replace(/\/+$/, "");
+    }
+  } catch {}
+  return `${trimmed}/beta`;
+}
+
 /**
  * 构建单个模型的 Pi SDK 格式条目
  * @param {string|{id:string, name?:string, context?:number, maxOutput?:number}} modelEntry
  * @param {string} provider - provider 名称（查词典用）
  */
-function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-completions") {
+function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-completions", options = {}) {
   const isObj = typeof modelEntry === "object" && modelEntry !== null;
   const id = getModelId(modelEntry);
   const known = lookupKnown(provider, id);
@@ -135,6 +151,9 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
       compat.supportsStore = false;
     }
     entry.compat = compat;
+  }
+  if (options.deepseekBetaStrictTools === true) {
+    entry.compat = { ...(entry.compat || {}), deepseekBetaStrictTools: true };
   }
 
   const videoAwareEntry = video === true ? withHanaVideoInputCompat(entry, true) : entry;
@@ -206,6 +225,8 @@ export function syncModels(providers, opts = {}) {
 
     const effectiveApiKey = apiKey || "local";
     const effectiveApi = p.api || "openai-completions";
+    const deepseekBetaStrictTools = name === "deepseek" && p[DEEPSEEK_BETA_STRICT_TOOLS_FLAG] === true;
+    const effectiveBaseUrl = deepseekBetaStrictTools ? withDeepSeekBetaBaseUrl(p.base_url) : p.base_url;
     const chatModels = filterChatModelEntries(name, p.models);
     const customModels = [];
     const modelOverrides = {};
@@ -217,11 +238,11 @@ export function syncModels(providers, opts = {}) {
         if (override) modelOverrides[id] = override;
         continue;
       }
-      customModels.push(buildModelEntry(modelEntry, name, p.base_url, effectiveApi));
+      customModels.push(buildModelEntry(modelEntry, name, effectiveBaseUrl, effectiveApi, { deepseekBetaStrictTools }));
     }
 
     const providerConfig = {
-      baseUrl: p.base_url,
+      baseUrl: effectiveBaseUrl,
       api: effectiveApi,
       apiKey: effectiveApiKey,
     };

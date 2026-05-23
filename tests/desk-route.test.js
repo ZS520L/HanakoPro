@@ -168,6 +168,50 @@ describe("desk route", () => {
     }
   });
 
+  it("rejects desk uploads when a source directory contains symlinks", async () => {
+    const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desk-route-"));
+    try {
+      const cwd = path.join(tempRoot, "workspace");
+      const srcDir = path.join(tempRoot, "incoming");
+      const outside = path.join(tempRoot, "outside-secret.txt");
+      fs.mkdirSync(cwd, { recursive: true });
+      fs.mkdirSync(srcDir, { recursive: true });
+      fs.writeFileSync(path.join(srcDir, "note.txt"), "safe", "utf-8");
+      fs.writeFileSync(outside, "secret", "utf-8");
+      fs.symlinkSync(outside, path.join(srcDir, "secret-link.txt"));
+
+      const engine = {
+        deskCwd: cwd,
+        homeCwd: cwd,
+        hanakoHome: path.join(tempRoot, "hana-home"),
+      };
+
+      const { createDeskRoute } = await import("../server/routes/desk.js");
+      const app = new Hono();
+      app.route("/api", createDeskRoute(engine, null));
+
+      const res = await app.request("/api/desk/files", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "upload",
+          dir: cwd,
+          paths: [srcDir],
+        }),
+      });
+
+      expect(res.status).toBe(200);
+      const data = await res.json();
+      expect(data.results[0]).toMatchObject({
+        src: srcDir,
+        error: "symlink not allowed",
+      });
+      expect(fs.existsSync(path.join(cwd, "incoming"))).toBe(false);
+    } finally {
+      fs.rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it("searches workspace file names recursively without exposing hidden or dependency folders", async () => {
     const tempRoot = fs.mkdtempSync(path.join(os.tmpdir(), "hana-desk-route-"));
     try {

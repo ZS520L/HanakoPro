@@ -13,6 +13,17 @@ export function realPath(p) {
   catch { return null; }
 }
 
+export function assertNoSymlinksSync(p) {
+  const stat = fs.lstatSync(p);
+  if (stat.isSymbolicLink()) throw new Error("symlink not allowed");
+  if (!stat.isDirectory()) return;
+  for (const entry of fs.readdirSync(p, { withFileTypes: true })) {
+    if (entry.isSymbolicLink()) throw new Error("symlink not allowed");
+    const child = path.join(p, entry.name);
+    if (entry.isDirectory()) assertNoSymlinksSync(child);
+  }
+}
+
 /** 敏感 dot 目录（不允许从这些目录复制文件） */
 const SENSITIVE_DIRS = [".ssh", ".gnupg", ".aws", ".config/gcloud", ".kube"];
 

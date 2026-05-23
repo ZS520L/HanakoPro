@@ -38,6 +38,9 @@ const DEEPSEEK_HIGH_SAFE_MAX_TOKENS = 65536;
 const DEEPSEEK_MAX_SAFE_MAX_TOKENS = 131072;
 
 const hasOwn = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
+const isPlainObject = (value) => !!value && typeof value === "object" && !Array.isArray(value);
+const SUPPORTED_STRICT_SCHEMA_TYPES = new Set(["object", "string", "number", "integer", "boolean", "array"]);
+const UNSUPPORTED_STRICT_SCHEMA_KEYS = ["minLength", "maxLength", "minItems", "maxItems", "nullable"];
 const MISSING_ANTHROPIC_TOOL_THINKING_ERROR =
   "DeepSeek Anthropic thinking mode history is missing non-empty thinking content for a tool call. "
   + "Compact this session or start a new session before continuing with DeepSeek Anthropic thinking mode.";
@@ -140,6 +143,161 @@ function disableAnthropicThinking(payload) {
   delete payload.reasoning_effort;
   delete payload.output_config;
   payload.thinking = { type: "disabled" };
+}
+
+function useBetaStrictTools(model) {
+  return model?.compat?.deepseekBetaStrictTools === true
+    || model?.deepseekBetaStrictTools === true
+    || model?.deepseek_beta_strict_tools === true;
+}
+
+function inferStrictSchemaType(value) {
+  if (typeof value === "string") return "string";
+  if (typeof value === "boolean") return "boolean";
+  if (typeof value === "number" && Number.isFinite(value)) return Number.isInteger(value) ? "integer" : "number";
+  if (Array.isArray(value)) return "array";
+  if (isPlainObject(value)) return "object";
+  return "";
+}
+
+function normalizeStrictSchemaType(type) {
+  if (typeof type === "string") return SUPPORTED_STRICT_SCHEMA_TYPES.has(type) ? type : "";
+  if (!Array.isArray(type)) return "";
+  const normalized = type.find((item) => typeof item === "string" && SUPPORTED_STRICT_SCHEMA_TYPES.has(item));
+  return normalized || "";
+}
+
+function normalizeStrictRef(value) {
+  if (typeof value !== "string") return value;
+  return value
+    .replace(/^#\/\$defs\//, "#/$def/")
+    .replace(/^#\/definitions\//, "#/$def/");
+}
+
+function normalizeStrictSchema(schema, seen = new WeakSet()) {
+  if (!isPlainObject(schema)) return schema;
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
+
+  let next = schema;
+  const editable = () => {
+    if (next === schema) next = { ...schema };
+    return next;
+  };
+
+  for (const key of UNSUPPORTED_STRICT_SCHEMA_KEYS) {
+    if (hasOwn(schema, key)) delete editable()[key];
+  }
+
+  const normalizedType = normalizeStrictSchemaType(schema.type);
+  if (normalizedType && normalizedType !== schema.type) {
+    editable().type = normalizedType;
+  } else if (hasOwn(schema, "type") && !normalizedType) {
+    delete editable().type;
+  }
+  const normalizedRef = normalizeStrictRef(schema.$ref);
+  if (normalizedRef !== schema.$ref) editable().$ref = normalizedRef;
+
+  if (isPlainObject(schema.properties)) {
+    const properties = {};
+    let changed = false;
+    for (const [key, value] of Object.entries(schema.properties)) {
+      const normalized = normalizeStrictSchema(value, seen);
+      properties[key] = normalized;
+      if (normalized !== value) changed = true;
+    }
+    if (changed) editable().properties = properties;
+  }
+
+  if (isPlainObject(schema.items)) {
+    const items = normalizeStrictSchema(schema.items, seen);
+    if (items !== schema.items) editable().items = items;
+  } else if (Array.isArray(schema.items)) {
+    const items = schema.items.map((item) => normalizeStrictSchema(item, seen));
+    const target = editable();
+    target.items = items.length === 1 ? items[0] : { anyOf: items };
+  }
+
+  if (Array.isArray(schema.anyOf)) {
+    const values = schema.anyOf.map((item) => normalizeStrictSchema(item, seen));
+    if (values.some((item, index) => item !== schema.anyOf[index])) editable().anyOf = values;
+  }
+
+  for (const key of ["oneOf", "allOf"]) {
+    if (!Array.isArray(schema[key])) continue;
+    const values = schema[key].map((item) => normalizeStrictSchema(item, seen));
+    const target = editable();
+    target.anyOf = Array.isArray(target.anyOf) ? [...target.anyOf, ...values] : values;
+    delete target[key];
+  }
+
+  let mergedDefs = null;
+  let defsChanged = false;
+  for (const key of ["$def", "$defs", "definitions"]) {
+    if (!isPlainObject(schema[key])) continue;
+    if (!mergedDefs) mergedDefs = {};
+    for (const [name, value] of Object.entries(schema[key])) {
+      const normalized = normalizeStrictSchema(value, seen);
+      mergedDefs[name] = normalized;
+      if (normalized !== value || key !== "$def") defsChanged = true;
+    }
+  }
+  if (mergedDefs) {
+    const target = editable();
+    if (defsChanged || target.$def !== mergedDefs) target.$def = mergedDefs;
+    delete target.$defs;
+    delete target.definitions;
+  }
+
+  const candidate = next;
+  if (candidate.type === "object" || isPlainObject(candidate.properties)) {
+    if (candidate.type !== "object") editable().type = "object";
+    const properties = isPlainObject(candidate.properties) ? candidate.properties : {};
+    const required = Object.keys(properties);
+    const hasRequired = Array.isArray(candidate.required)
+      && candidate.required.length === required.length
+      && required.every((key) => candidate.required.includes(key));
+    if (!hasRequired) editable().required = required;
+    if (candidate.additionalProperties !== false) editable().additionalProperties = false;
+  }
+  if (!candidate.type && Array.isArray(candidate.enum) && candidate.enum.length > 0) {
+    const inferred = inferStrictSchemaType(candidate.enum[0]);
+    if (inferred && candidate.enum.every((value) => inferStrictSchemaType(value) === inferred)) {
+      editable().type = inferred;
+    }
+  }
+  if (!candidate.type && hasOwn(candidate, "const")) {
+    const inferred = inferStrictSchemaType(candidate.const);
+    if (inferred) editable().type = inferred;
+  }
+
+  return next;
+}
+
+function withStrictToolDefinition(tool) {
+  if (!isPlainObject(tool) || tool.type !== "function" || !isPlainObject(tool.function)) {
+    return tool;
+  }
+  const fn = tool.function;
+  const parameters = normalizeStrictSchema(isPlainObject(fn.parameters) ? fn.parameters : { type: "object", properties: {} });
+  if (fn.strict === true && parameters === fn.parameters) return tool;
+  return {
+    ...tool,
+    function: {
+      ...fn,
+      ...(parameters ? { parameters } : {}),
+      strict: true,
+    },
+  };
+}
+
+function applyBetaStrictTools(payload, model) {
+  if (!useBetaStrictTools(model) || !Array.isArray(payload.tools) || payload.tools.length === 0) {
+    return payload;
+  }
+  const tools = payload.tools.map(withStrictToolDefinition);
+  if (tools.every((tool, index) => tool === payload.tools[index])) return payload;
+  return { ...payload, tools };
 }
 
 function normalizeMaxTokenField(payload) {
@@ -279,6 +437,8 @@ export function apply(payload, model, options = {}) {
     if (next === payload) next = { ...payload };
     return next;
   };
+
+  next = applyBetaStrictTools(next, model);
 
   if (hasOwn(payload, "max_completion_tokens")) {
     normalizeMaxTokenField(editable());

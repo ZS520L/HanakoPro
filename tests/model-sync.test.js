@@ -488,6 +488,29 @@ describe("syncModels", () => {
     });
   });
 
+  it("projects DeepSeek Beta strict tool calling into runtime provider and model compat", async () => {
+    const syncModels = await loadSync();
+
+    const providers = {
+      deepseek: {
+        base_url: "https://api.deepseek.com",
+        api: "openai-completions",
+        api_key: "sk-test",
+        deepseek_beta_strict_tools: true,
+        models: ["deepseek-v4-pro"],
+      },
+    };
+
+    syncModels(providers, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    expect(result.providers.deepseek.baseUrl).toBe("https://api.deepseek.com/beta");
+    expect(result.providers.deepseek.models[0].compat).toMatchObject({
+      deepseekBetaStrictTools: true,
+      thinkingFormat: "deepseek",
+    });
+  });
+
   it("does not infer thinkingFormat from Anthropic protocol without reasoning capability", async () => {
     const syncModels = await loadSync();
 

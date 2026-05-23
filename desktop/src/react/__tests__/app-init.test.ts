@@ -115,6 +115,14 @@ function serverIdentityResponse(partial: Record<string, unknown> = {}): Response
   });
 }
 
+function deferredResponse() {
+  let resolve!: (value: Response) => void;
+  const promise = new Promise<Response>((r) => {
+    resolve = r;
+  });
+  return { promise, resolve };
+}
+
 describe('initApp bridge indicator', () => {
   beforeEach(() => {
     Object.keys(mockState).forEach(k => delete mockState[k]);
@@ -200,7 +208,56 @@ describe('initApp bridge indicator', () => {
       trustState: 'local',
       capabilities: ['chat', 'resources', 'tools'],
     });
-    expect(mockState.bridgeDotConnected).toBe(true);
+    await vi.waitFor(() => {
+      expect(mockState.bridgeDotConnected).toBe(true);
+    });
+  });
+
+  it('does not block appReady on startup sidebar badge requests', async () => {
+    const bridgeStatus = deferredResponse();
+    (globalThis as Record<string, unknown>).window = {
+      addEventListener: vi.fn(),
+      platform: {
+        getServerPort: vi.fn(async () => 62950),
+        getServerToken: vi.fn(async () => 'token'),
+        appReady: vi.fn(),
+        onSettingsChanged: vi.fn(),
+        openSettings: vi.fn(),
+      },
+      dispatchEvent: vi.fn(),
+    };
+    (globalThis as Record<string, unknown>).document = {
+      addEventListener: vi.fn(),
+    };
+    (globalThis as Record<string, unknown>).i18n = {
+      locale: 'zh-CN',
+      defaultName: 'Hanako',
+      load: vi.fn(async () => {}),
+    };
+    (globalThis as Record<string, unknown>).t = vi.fn((key: string) => key);
+
+    mockHanaFetch
+      .mockResolvedValueOnce(serverIdentityResponse())
+      .mockResolvedValueOnce(jsonResponse({ agent: 'Hanako', user: 'User', avatars: {} }))
+      .mockResolvedValueOnce(jsonResponse({ locale: 'zh-CN', desk: { home_folder: null }, cwd_history: [] }))
+      .mockResolvedValueOnce(jsonResponse({ jobs: [] }))
+      .mockReturnValueOnce(bridgeStatus.promise);
+
+    const { initApp } = await import('../app-init');
+    await initApp();
+
+    expect((window.platform.appReady as ReturnType<typeof vi.fn>)).toHaveBeenCalledTimes(1);
+    expect(mockState.bridgeDotConnected).toBeUndefined();
+
+    bridgeStatus.resolve(jsonResponse({
+      telegram: { status: 'connected' },
+      feishu: { status: 'disconnected' },
+      qq: { status: 'disconnected' },
+      wechat: { status: 'disconnected' },
+    }));
+    await vi.waitFor(() => {
+      expect(mockState.bridgeDotConnected).toBe(true);
+    });
   });
 
   it('stops startup explicitly when server identity cannot be loaded', async () => {

@@ -396,6 +396,26 @@ function hasExistingConfig() {
   return false;
 }
 
+async function needsModelSetupAfterStartup({ wouldSkipModelSetup = false } = {}) {
+  if (!wouldSkipModelSetup || !serverPort) return false;
+  try {
+    const headers = serverToken ? { Authorization: `Bearer ${serverToken}` } : {};
+    const res = await fetch(`http://127.0.0.1:${serverPort}/api/models`, {
+      headers,
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    const models = Array.isArray(data?.models) ? data.models : [];
+    if (models.length > 0) return false;
+    console.warn("[desktop] 启动后未检测到可用模型，将重新打开模型配置向导");
+    return true;
+  } catch (err) {
+    console.warn("[desktop] 启动模型配置健康检查失败，继续进入主界面:", err?.message || String(err));
+    return false;
+  }
+}
+
 /**
  * 一次性迁移：为 onboarding 功能上线前的老用户补写 setupComplete 标记。
  * 判断依据：agents/ 下存在至少一个含 config.yaml 的目录 → 用户配置过 agent → 老用户。
@@ -2585,7 +2605,7 @@ function setupBrowserCommands() {
 }
 
 // ── 创建 Onboarding 窗口 ──
-// query: 可选的 URL 参数，如 { skipToTutorial: "1" } 或 { preview: "1" }
+// query: 可选的 URL 参数，如 { skipToTutorial: "1" }、{ skipToModelSetup: "1" } 或 { preview: "1" }
 function createOnboardingWindow(query = {}) {
   const initialTheme = themeRegistry.DEFAULT_THEME;
   onboardingWindow = new BrowserWindow({
@@ -3635,18 +3655,27 @@ app.whenReady().then(async () => {
       app.dock.hide();
     }
 
+    const setupComplete = isSetupComplete();
+    const existingConfig = !setupComplete && hasExistingConfig();
+    const forceModelSetup = await needsModelSetupAfterStartup({
+      wouldSkipModelSetup: setupComplete || existingConfig,
+    });
+    const opensOnboarding = forceModelSetup || !setupComplete;
+
     // 3. 确保 splash 至少显示 3 秒；登录项后台启动没有 splash，也不需要等待
     const elapsed = Date.now() - splashShownAt;
     const minSplashMs = 3000;
-    if (splashWindow && elapsed < minSplashMs) {
+    if (!opensOnboarding && splashWindow && elapsed < minSplashMs) {
       await new Promise(r => setTimeout(r, minSplashMs - elapsed));
     }
 
     // 4. 检测是否需要 onboarding
-    if (isSetupComplete()) {
+    if (forceModelSetup) {
+      createOnboardingWindow({ skipToModelSetup: "1" });
+    } else if (setupComplete) {
       // 已完成配置：直接创建主窗口
       createMainWindow();
-    } else if (hasExistingConfig()) {
+    } else if (existingConfig) {
       // 老用户：已有 api_key，跳过填写直接看教程
       console.log("[desktop] 检测到已有配置，跳到教程页");
       createOnboardingWindow({ skipToTutorial: "1" });

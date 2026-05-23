@@ -5,6 +5,7 @@ import { invalidateConfigCache } from '../../../hooks/use-config';
 import { t, API_FORMAT_OPTIONS } from '../../helpers';
 import { SelectWidget } from '@/ui';
 import { KeyInput } from '../../widgets/KeyInput';
+import { Toggle } from '../../widgets/Toggle';
 import { getApiKeySavePlan } from './api-key-save-plan';
 import styles from '../../Settings.module.css';
 
@@ -23,6 +24,9 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
   const [urlVal, setUrlVal] = useState(derivedBaseUrl);
   const [urlEdited, setUrlEdited] = useState(false);
   const api = summary.api || presetInfo?.api || '';
+  const isDeepSeek = providerId === 'deepseek';
+  const deepseekBetaStrictTools = summary.deepseek_beta_strict_tools === true
+    || providerConfig?.deepseek_beta_strict_tools === true;
 
   // 未编辑时，从 summary 同步已保存的 key 到输入框
   useEffect(() => {
@@ -83,6 +87,22 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
   };
 
   const [connStatus, setConnStatus] = useState<'idle' | 'testing' | 'ok' | 'fail'>('idle');
+
+  const saveDeepSeekBetaStrictTools = async (on: boolean) => {
+    try {
+      await hanaFetch('/api/config', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ providers: { [providerId]: { deepseek_beta_strict_tools: on } } }),
+      });
+      invalidateConfigCache();
+      showToast(t('settings.saved'), 'success');
+      await onRefresh();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(t('settings.saveFailed') + ': ' + msg, 'error');
+    }
+  };
 
   const verifyOnly = async (btn: HTMLButtonElement) => {
     setConnStatus('testing');
@@ -187,6 +207,18 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
           />
         </div>
       </div>
+      {isDeepSeek && (
+        <div className={styles['pv-cred-row']}>
+          <span className={styles['pv-cred-label']}>{t('settings.providers.deepseekBeta')}</span>
+          <div className={styles['pv-cred-select-wrapper']} title={t('settings.providers.deepseekBetaStrictToolsHint')}>
+            <Toggle
+              on={deepseekBetaStrictTools}
+              onChange={saveDeepSeekBetaStrictTools}
+              label={t('settings.providers.deepseekBetaStrictTools')}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

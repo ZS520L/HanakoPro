@@ -132,6 +132,7 @@ export async function submitDesktopSessionMessage(engine, opts = {}) {
     }
   });
 
+  let promptError = null;
   try {
     const promptOpts = images?.length || videos?.length
       ? {
@@ -142,9 +143,16 @@ export async function submitDesktopSessionMessage(engine, opts = {}) {
       }
       : undefined;
     await engine.promptSession(sessionPath, promptText, promptOpts);
+  } catch (err) {
+    promptError = err;
+    throw err;
   } finally {
     try { unsub?.(); } catch {}
-    engine.emitEvent?.({ type: "session_status", isStreaming: false }, sessionPath);
+    engine.emitEvent?.({
+      type: "session_status",
+      isStreaming: false,
+      ...(promptError ? { reason: "prompt_error", error: promptError.message || String(promptError) } : {}),
+    }, sessionPath);
   }
 
   return {

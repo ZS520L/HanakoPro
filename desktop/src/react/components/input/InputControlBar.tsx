@@ -4,7 +4,7 @@ import { ContextRing } from './ContextRing';
 import { ThinkingLevelButton } from './ThinkingLevelButton';
 import { ModelSelector } from './ModelSelector';
 import { SendButton } from './SendButton';
-import type { ThinkingLevel } from '../../stores/model-slice';
+import type { ModelsLoadState, ThinkingLevel } from '../../stores/model-slice';
 import type { Model } from '../../types';
 import type { SessionModel } from '../../stores/chat-types';
 import styles from './InputArea.module.css';
@@ -24,6 +24,7 @@ interface Props {
   onThinkingChange: (level: ThinkingLevel) => void;
   modelXhigh: boolean;
   models: Model[];
+  modelsLoadState: ModelsLoadState;
   sessionModel?: SessionModel;
   isStreaming: boolean;
   hasInput: boolean;
@@ -39,7 +40,7 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
     t, onAttach, slashBtnRef, onSlashToggle,
     permissionMode, onPermissionModeChange, planModeLocked,
     showThinking, thinkingLevel, onThinkingChange, modelXhigh,
-    models, sessionModel, isStreaming, hasInput, canSend, onSend, onSteer, onStop,
+    models, modelsLoadState, sessionModel, isStreaming, hasInput, canSend, onSend, onSteer, onStop,
   } = props;
 
   return (
@@ -72,7 +73,7 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
         {showThinking && (
           <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} modelXhigh={modelXhigh} />
         )}
-        <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} />
+        <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} loadState={modelsLoadState} />
         <SendButton isStreaming={isStreaming} hasInput={hasInput}
           disabled={isStreaming ? false : !canSend} onSend={onSend} onSteer={onSteer} onStop={onStop} />
       </div>
