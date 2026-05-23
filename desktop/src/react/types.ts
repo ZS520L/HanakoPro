@@ -23,6 +23,27 @@ export interface AutoLaunchStatus {
   executableWillLaunchAtLogin?: boolean | null;
 }
 
+export type DesktopPetMood = 'idle' | 'thinking' | 'talking' | 'working' | 'happy' | 'error' | 'cute' | 'sad' | 'missing';
+
+export interface DesktopPetState {
+  enabled: boolean;
+  visible: boolean;
+  backgroundOnly: boolean;
+  alwaysOnTop: boolean;
+  clickThrough: boolean;
+  scale: number;
+  mood: DesktopPetMood;
+  message: string;
+  customImages?: Partial<Record<DesktopPetMood, string>>;
+}
+
+export type DesktopPetStatePatch = Partial<DesktopPetState> & {
+  x?: number | null;
+  y?: number | null;
+  width?: number;
+  height?: number;
+};
+
 // ── 核心数据结构 ──
 
 export interface Session {
@@ -316,6 +337,18 @@ export interface PlatformApi {
   onAutoUpdateState?(callback: (state: AutoUpdateState) => void): (() => void) | void;
   getAutoLaunchStatus?(): Promise<AutoLaunchStatus>;
   setAutoLaunchEnabled?(enabled: boolean): Promise<AutoLaunchStatus>;
+
+  // ── Desktop pet ──
+  desktopPetGetState?(): Promise<DesktopPetState>;
+  desktopPetSetState?(patch: DesktopPetStatePatch): Promise<DesktopPetState>;
+  desktopPetSelectCustomImage?(mood: DesktopPetMood): Promise<DesktopPetState | null>;
+  desktopPetResetCustomImage?(mood: DesktopPetMood): Promise<DesktopPetState>;
+  desktopPetGetChatSession?(): Promise<{ path: string } | null>;
+  desktopPetSendPrompt?(text: string): Promise<{ ok: boolean; sessionPath?: string }>;
+  desktopPetOpenMain?(): void;
+  desktopPetForwardEvent?(event: unknown): void;
+  onDesktopPetChatEvent?(callback: (event: unknown) => void): (() => void) | void;
+  onDesktopPetState?(callback: (state: Partial<DesktopPetState>) => void): (() => void) | void;
 
   // ── Skill viewer overlay ──
   onShowSkillViewer?(callback: (data: unknown) => void): void;

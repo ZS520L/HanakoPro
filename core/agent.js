@@ -37,6 +37,7 @@ import { createStopTaskTool } from "../lib/tools/stop-task-tool.js";
 import { createCurrentStatusTool } from "../lib/tools/current-status-tool.js";
 import { runCompatChecks } from "../lib/compat/index.js";
 import { getPlatformPromptNote } from "./platform-prompt.js";
+import { composePromptFromBlocks, getPromptRuntimeInjections } from "../shared/prompt-composer.js";
 
 export class Agent {
   /**
@@ -93,6 +94,7 @@ export class Agent {
     this._experienceEnabled = false;    // agent 级别经验能力开关（config.yaml experience.enabled，默认关闭）
     this._enabledSkills = [];
     this._systemPrompt = "";
+    this._lastPromptBlocks = [];
     this._descriptionRefreshHandler = null;
 
     // Desk 系统（与 memory 完全独立）
@@ -610,6 +612,13 @@ export class Agent {
     return this.getToolsSnapshot();
   }
 
+  getPromptComposerSource(options = {}) {
+    this.buildSystemPrompt(options);
+    return {
+      blocks: this._lastPromptBlocks.map((block) => ({ ...block })),
+    };
+  }
+
   _getComputerUseTool() {
     if (!this._computerUseTool) {
       this._computerUseTool = createComputerUseTool({
@@ -817,6 +826,10 @@ export class Agent {
     const cwdOverride = Object.prototype.hasOwnProperty.call(options, "cwdOverride")
       ? (typeof options.cwdOverride === "string" ? options.cwdOverride : "")
       : null;
+    const promptComposerConfig = Object.prototype.hasOwnProperty.call(options, "promptComposer")
+      ? options.promptComposer
+      : this._config?.promptComposer;
+    const runtimeInjections = getPromptRuntimeInjections(promptComposerConfig);
     const memoryEnabled = typeof forceMemoryEnabled === "boolean"
       ? forceMemoryEnabled
       : this.memoryEnabled;
@@ -839,6 +852,13 @@ export class Agent {
 
     // 构建 section 分隔格式的 prompt
     const section = (title, content) => ["", "---", "", title, "", content];
+    const parts = [];
+    const promptBlocks = [];
+    const addPromptBlock = (id, label, content) => {
+      const blockParts = Array.isArray(content) ? content : [content];
+      parts.push(...blockParts);
+      promptBlocks.push({ id, label, content: blockParts.join("\n") });
+    };
 
     // Prompt 拼接遵循「静态前缀在前、动态尾部在后」原则，最大化跨 session 的 prefix
     // cache 命中率（KV cache / Anthropic prompt cache 都按严格前缀匹配）。
@@ -848,14 +868,14 @@ export class Agent {
     //
     // ishiki 放在用户档案之后：模板里有「你和{userName}是认识很久的人」这类引用，
     // 叙事顺序上先告诉模型"用户是谁"，再告诉它"你是谁、你和用户什么关系"。
-    const parts = [
+    addPromptBlock("platform", isZh ? "平台声明" : "Platform", 
       isZh
         ? "你运行在 OpenHanako 平台上，由 liliMozi 开发。项目主页：https://github.com/liliMozi/openhanako"
-        : "You are running on the OpenHanako platform, developed by liliMozi. Project page: https://github.com/liliMozi/openhanako",
-    ];
+        : "You are running on the OpenHanako platform, developed by liliMozi. Project page: https://github.com/liliMozi/openhanako"
+    );
     const platformPrompt = getPlatformPromptNote({ platform: process.platform });
     if (platformPrompt) {
-      parts.push(...section(
+      addPromptBlock("environment", isZh ? "执行环境" : "Environment", section(
         isZh ? "# 执行环境" : "# Environment",
         platformPrompt
       ));
@@ -863,8 +883,10 @@ export class Agent {
     // 记忆整体开关：master && session 都开启才注入记忆相关 prompt
     // Subagent 场景下整块跳过（无记忆工具 = 规则和 pinned 也是孤儿噪音）
     // 注意：记忆块本身已下移到 prompt 末尾（见下方），这里只是预先准备好规则文本
-    let memoryBlock = null;
-    if (memoryEnabled && !forSubagent) {
+    let memoryRuleBlock = null;
+    let pinnedMemoryBlock = null;
+    let memoryContentBlock = null;
+    if (runtimeInjections.memory !== false && memoryEnabled && !forSubagent) {
       const memoryRule = isZh ? [
         "",
         "## 记忆使用规则",
@@ -891,24 +913,23 @@ export class Agent {
       const hasMemory = trimmedMemory && trimmedMemory !== "（暂无记忆）" && trimmedMemory !== "(No memory yet)";
 
       if (hasPinned || hasMemory) {
-        const memParts = [memoryRule];
+        memoryRuleBlock = memoryRule;
         if (hasPinned) {
-          memParts.push(...section(
+          pinnedMemoryBlock = section(
             isZh ? "# 置顶记忆" : "# Pinned Memories",
             isZh
               ? "用户主动要求你记住的内容，始终保留。你可以读写这些记忆。\n\n" + pinnedMd
               : "Content the user explicitly asked you to remember. Always retained. You can read and write these memories.\n\n" + pinnedMd
-          ));
+          );
         }
         if (hasMemory) {
-          memParts.push(...section(
+          memoryContentBlock = section(
             isZh ? "# 记忆" : "# Memory",
             isZh
               ? "以下这些是从过往对话积累的记忆。\n\n" + memory
               : "The following are memories accumulated from past conversations.\n\n" + memory
-          ));
+          );
         }
-        memoryBlock = memParts;
       }
     }
 
@@ -917,7 +938,7 @@ export class Agent {
     // 显示路径（GET /system-prompt）会自行拼接 skills 以保持开发者视图一致。
 
     // 任务管理引导（todo_write 工具主动使用）
-    parts.push(isZh
+    addPromptBlock("task-management", isZh ? "任务管理" : "Task Management", isZh
       ? "\n## 任务管理\n\n" +
         "用 todo_write 工具拆分和追踪你的工作。收到复杂或多步骤的任务时，先拆分为子任务再逐步执行。\n\n" +
         "**每次调用都传入完整的 todos 列表**（替换式），每条 todo 必须包含：\n" +
@@ -932,13 +953,13 @@ export class Agent {
         "- content: static description, e.g. 'Read spec'\n" +
         "- activeForm: in-progress description, e.g. 'Reading spec'\n" +
         "- status: pending | in_progress | completed\n\n" +
-        "**Convention: at most one in_progress at a time**. Mark a todo in_progress when starting it, immediately change it to completed when done and set the next one to in_progress — do not batch up completions.\n" +
+        "**Convention: at most one in_progress at a time**. Mark a todo in_progress when starting it, immediately change it to completed and set the next one to in_progress — do not batch up completions.\n" +
         "This helps the user track your progress. Simple single-step tasks (answering questions, single lookups, simple edits) do not need todo_write."
     );
 
     // 经验库引导。经验是独立能力：缺省关闭，开启后才把规则写入新 session 的 prompt。
     if (experienceEnabled) {
-      parts.push(isZh
+      addPromptBlock("experience", isZh ? "经验库" : "Experience Library", isZh
         ? "\n## 经验库\n\n" +
           "你有一个经验库，记录着过往工作中踩过的坑和学到的教训。\n\n" +
           "**查**：接到工作任务时，先调用 recall_experience 扫一眼索引，看有没有相关经验。\n\n" +
@@ -959,7 +980,7 @@ export class Agent {
     }
 
     // 工具使用纪律（轻量优先）
-    parts.push(isZh
+    addPromptBlock("tool-discipline", isZh ? "工具使用纪律" : "Tool Usage Discipline", isZh
       ? "\n## 工具使用纪律\n\n" +
         "当多个工具能完成同一件事时，优先使用成本最低、干扰最小的那个。" +
         "不要在简单工具能解决问题的场景下启动重型工具。"
@@ -968,7 +989,7 @@ export class Agent {
         "Do not reach for heavy tools when simpler ones can do the job."
     );
 
-    parts.push(isZh
+    addPromptBlock("current-view", isZh ? "当前视野" : "Current View", isZh
       ? "\n## 当前视野\n\n" +
         "用户界面有一份可查询的当前视野，包括当前浏览目录、主面板打开内容和钉住窗口。" +
         "用户用“这个、这里、当前、打开的、选中的、钉住的、当前文件、当前文件夹”等说法指向界面时，先调用 current_status 获取 ui_context，再继续处理任务。"
@@ -977,7 +998,7 @@ export class Agent {
         "When the user says things like this, here, current, open, selected, pinned, current file, or current folder to refer to the UI, call current_status for ui_context first, then continue the task."
     );
 
-    parts.push(isZh
+    addPromptBlock("session-files", isZh ? "Session 文件与交付" : "Session Files and Delivery", isZh
       ? "\n## Session 文件与交付\n\n" +
         "SessionFile 表示和当前 session 相关的本地文件：用户上传/附加的文件、你通过 write 创建的文件、你通过 edit 修改的文件、插件产物、浏览器截图、安装产物都会进入同一套 session 文件记录。\n\n" +
         "当你需要使用本轮会话已经产生或登记过的文件时，先调用 current_status 获取 session_files。它会返回当前 session 的文件清单、fileId、来源、状态和本机路径。不要猜测 session-files 缓存路径。\n\n" +
@@ -999,7 +1020,7 @@ export class Agent {
     );
 
     if (this._isComputerUseAvailableForThisAgent()) {
-      parts.push(isZh
+      addPromptBlock("desktop-app-control", isZh ? "本机应用控制" : "Desktop App Control", isZh
         ? "\n## 本机应用控制\n\n" +
           "用户要求打开、查看、点击、输入或控制本机 GUI 应用时，优先使用 computer 工具。" +
           "不要用 bash、AppleScript、osascript、open -a 或平台脚本控制 GUI 应用；这些路径会绕过 Hana 的应用审批列表，也更容易撞到系统隐私权限。" +
@@ -1012,7 +1033,7 @@ export class Agent {
     }
 
     // 失败处理（诊断优先于换方案）
-    parts.push(isZh
+    addPromptBlock("failure-handling", isZh ? "失败处理" : "Failure Handling", isZh
       ? "\n## 失败处理\n\n" +
         "方案失败时，先诊断原因再换方向：读错误信息、检查假设、尝试针对性修复。" +
         "不要盲目重试同一动作，也不要一次失败就彻底放弃一个可行方案。"
@@ -1022,7 +1043,7 @@ export class Agent {
     );
 
     // 操作安全（可逆性判断框架）
-    parts.push(isZh
+    addPromptBlock("action-safety", isZh ? "操作安全" : "Action Safety", isZh
       ? "\n## 操作安全\n\n" +
         "执行操作前，考虑可逆性和影响范围。本地的、可撤销的操作可以直接执行。" +
         "但对于难以撤销、影响外部系统、或可能造成破坏的操作（删除文件、发送消息到外部服务、修改他人可见的状态），先向用户确认再执行。" +
@@ -1034,7 +1055,7 @@ export class Agent {
     );
 
     // 网页工具选择优先级（跨工具编排，工具 description 里放不下）
-    parts.push(isZh
+    addPromptBlock("web-tool-priority", isZh ? "网页工具优先级" : "Web Tool Priority", isZh
       ? "\n## 网页工具优先级\n\n" +
         "获取网页信息时，按以下顺序选择工具：\n" +
         "1. **web_search** — 查找信息、获取 URL。大多数「帮我查一下 XX」的请求用这个就够了\n" +
@@ -1050,7 +1071,7 @@ export class Agent {
     );
 
     // 设置工具路由
-    parts.push(isZh
+    addPromptBlock("settings-changes", isZh ? "设置修改" : "Settings Changes", isZh
       ? "\n## 设置修改\n\n" +
         "用户提到修改设置而未指明具体软件时，默认指本应用的设置。\n" +
         "用户要求修改偏好设置（包括但不限于：外观主题、语言地区、模型选择、安全权限、记忆功能、个人信息、工作目录）时，使用 update_settings 工具。不要搜索网页，不要编辑配置文件。意图明确时直接 apply，不确定时先 search。"
@@ -1063,7 +1084,7 @@ export class Agent {
     // learn_skills 从全局 preferences 读取
     const learnCfg = this._cb?.getLearnSkills?.() || this._config?.capabilities?.learn_skills || {};
     if (learnCfg.enabled && learnCfg.allow_github_fetch) {
-      parts.push(isZh
+      addPromptBlock("proactive-skill-acquisition", isZh ? "主动技能获取" : "Proactive Skill Acquisition", isZh
         ? "\n## 主动技能获取\n\n" +
           "遇到专业领域任务且你没有对应技能时，主动搜索并安装。\n\n" +
           "### 搜索\n\n" +
@@ -1109,7 +1130,7 @@ export class Agent {
           const nameLabel = a.name && a.name !== a.id ? `（${a.name}）` : "";
           return `- \`${a.id}\`${nameLabel}${tag}${model}${desc}`;
         }).join("\n");
-        parts.push(isZh
+        addPromptBlock("team", isZh ? "团队" : "Team", isZh
           ? `\n## 团队\n\n` +
             `你不是独自工作。当前环境中有多个 agent，各有不同的专长和模型：\n\n${roster}\n\n` +
             `调用 subagent 或 dm 工具时，agent 参数必须传上面反引号里的 id 字段值，不是括号里的显示名。\n` +
@@ -1129,7 +1150,7 @@ export class Agent {
     // 统一放在 prompt 末尾以保护前面静态前缀的 cache 命中率。
 
     // 用户档案（user.md，用户偶尔手动编辑）
-    parts.push(...section(
+    addPromptBlock("user-profile", isZh ? "用户档案" : "User Profile", section(
       isZh ? "# 用户档案" : "# User Profile",
       isZh
         ? "以下是用户的自我描述，由用户手动维护。\n\n" + userMd
@@ -1138,22 +1159,23 @@ export class Agent {
 
     // ishiki（identity + yuan + ishiki 模板，含 {{userName}} 等替换）
     // 放在用户档案之后：先建立"用户是谁"的语境，再讲"你是谁、你和用户什么关系"。
-    parts.push(ishiki);
+    addPromptBlock("personality", isZh ? "人格与意识" : "Personality", ishiki);
 
-    // 工作空间 = 当前工作目录（注入实际路径）
     const cwdPath = cwdOverride !== null ? cwdOverride : (this._cb?.getCwd?.() || "");
-    parts.push(isZh
-      ? `\n## 工作空间\n\n` +
-        `用户所说的「工作空间」指的是当前工作目录（cwd）。` +
-        (cwdPath ? `\n当前工作目录：${cwdPath}` : "") +
-        `\n用户提到的文件、目录默认在当前工作目录下查找。`
-      : `\n## Workspace\n\n` +
-        `When the user says "workspace", they mean the current working directory (cwd).` +
-        (cwdPath ? `\nCurrent working directory: ${cwdPath}` : "") +
-        `\nFiles and directories mentioned by the user should be searched in the current working directory first.`
-    );
+    if (runtimeInjections.workspace !== false) {
+      addPromptBlock("workspace", isZh ? "工作空间" : "Workspace", isZh
+        ? `\n## 工作空间\n\n` +
+          `用户所说的「工作空间」指的是当前工作目录（cwd）。` +
+          (cwdPath ? `\n当前工作目录：${cwdPath}` : "") +
+          `\n用户提到的文件、目录默认在当前工作目录下查找。`
+        : `\n## Workspace\n\n` +
+          `When the user says "workspace", they mean the current working directory (cwd).` +
+          (cwdPath ? `\nCurrent working directory: ${cwdPath}` : "") +
+          `\nFiles and directories mentioned by the user should be searched in the current working directory first.`
+      );
+    }
 
-    parts.push(isZh
+    addPromptBlock("skill-file-identity", isZh ? "技能文件身份" : "Skill File Identity", isZh
       ? "\n## 技能文件身份\n\n" +
         "技能的运行时位置可能是会话冻结的源文件指针，也可能是旧会话遗留的快照副本。指针只冻结本次会话可见的技能身份；如果源文件已不存在，该技能视为不可用。`sessions/.skill-snapshots` 与 `session-files` 下的技能副本不是源文件，不能编辑。用户要求修改技能时，先定位真实源文件：工作区技能通常在当前工作目录的 `.agents/skills/<name>/SKILL.md`；安装后的用户技能或自学技能以安装工具返回的 `skill_source` 为准。找不到源文件时显式说明。"
       : "\n## Skill File Identity\n\n" +
@@ -1161,8 +1183,14 @@ export class Agent {
     );
 
     // 记忆规则 + 置顶记忆 + 记忆（动态，后台 compile 会更新；按 session 快照）
-    if (memoryBlock) {
-      parts.push(...memoryBlock);
+    if (memoryRuleBlock) {
+      addPromptBlock("memory-rules", isZh ? "记忆规则" : "Memory Rules", memoryRuleBlock);
+    }
+    if (pinnedMemoryBlock) {
+      addPromptBlock("pinned-memory", isZh ? "置顶记忆" : "Pinned Memory", pinnedMemoryBlock);
+    }
+    if (memoryContentBlock) {
+      addPromptBlock("memory", isZh ? "记忆" : "Memory", memoryContentBlock);
     }
 
     // 日期时间（尊重用户时区偏好，fallback 到系统时区）
@@ -1174,11 +1202,28 @@ export class Agent {
       ...(tz ? { timeZone: tz } : {}),
     };
     const dateTime = now.toLocaleString("en-US", fmtOpts);
-    parts.push(`\nCurrent date and time: ${dateTime}`);
-    parts.push(isZh
-      ? "你的一天从凌晨 4:00 开始。4:00 之前的对话属于前一天。"
-      : "Your day starts at 4:00 AM. Conversations before 4:00 AM belong to the previous day.");
+    if (runtimeInjections.currentTime !== false) {
+      addPromptBlock("current-time", isZh ? "当前时间" : "Current Time", [
+        `\nCurrent date and time: ${dateTime}`,
+        isZh
+          ? "你的一天从凌晨 4:00 开始。4:00 之前的对话属于前一天。"
+          : "Your day starts at 4:00 AM. Conversations before 4:00 AM belong to the previous day.",
+      ]);
+    }
 
-    return parts.join("\n");
+    const defaultPrompt = parts.join("\n");
+    this._lastPromptBlocks = promptBlocks.map((block) => ({ ...block }));
+    const composedPrompt = composePromptFromBlocks({
+      config: promptComposerConfig,
+      builtInBlocks: promptBlocks,
+      variables: {
+        userName: this.userName,
+        agentName: this.agentName,
+        agentId: this.id,
+        cwd: cwdPath,
+        currentDateTime: dateTime,
+      },
+    });
+    return composedPrompt || defaultPrompt;
   }
 }

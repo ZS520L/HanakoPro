@@ -42,12 +42,19 @@ export function configureWsMessageHandler(options: {
   requestContextUsage = options.requestContextUsage || (() => {});
 }
 
+function forwardDesktopPetEvent(msg: any, focusedSessionPath: string | null): void {
+  if (typeof window === 'undefined') return;
+  if (msg?.sessionPath && focusedSessionPath && msg.sessionPath !== focusedSessionPath) return;
+  window.platform?.desktopPetForwardEvent?.(msg);
+}
+
 // ── 聊天事件集合（走 StreamBufferManager） ──
 
 const REACT_CHAT_EVENTS = new Set([
   'text_delta', 'thinking_start', 'thinking_delta', 'thinking_end',
   'mood_start', 'mood_text', 'mood_end',
   'tool_start', 'tool_progress', 'file_write_prepare', 'tool_end', 'turn_end',
+  'vision_progress',
   'content_block', 'plugin_card',
   'compaction_start', 'compaction_end',
 ]);
@@ -212,6 +219,8 @@ export function handleServerMessage(msg: any): void {
   ) {
     return;
   }
+
+  forwardDesktopPetEvent(msg, state.currentSessionPath || null);
 
   if (msg.type !== 'stream_resume' && isStreamScopedMessage(msg)) {
     updateSessionStreamMeta(msg);

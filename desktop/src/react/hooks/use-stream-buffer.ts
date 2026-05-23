@@ -441,6 +441,35 @@ class StreamBufferManager {
         });
         break;
 
+      case 'vision_progress':
+        this.splitPendingInterjectionIfReady(buf);
+        this.ensureMessage(buf);
+        this.sealCurrentTextSegment(buf);
+        this.updateTargetMessage(buf, (m) => {
+          const blocks = [...(m.blocks || [])];
+          const requestId = String(msg.requestId || `vision-${Date.now()}`);
+          const idx = blocks.findIndex(block => block.type === 'vision_progress' && block.requestId === requestId);
+          const nextBlock: ContentBlock = {
+            type: 'vision_progress',
+            requestId,
+            phase: msg.phase === 'done' || msg.phase === 'error' ? msg.phase : 'running',
+            imageIndex: msg.imageIndex,
+            imageCount: msg.imageCount,
+            resourceLabel: msg.resourceLabel,
+            model: msg.model,
+            targetModel: msg.targetModel,
+            question: msg.question,
+            response: msg.response,
+            error: msg.error,
+            elapsedMs: msg.elapsedMs,
+            reused: !!msg.reused,
+          };
+          if (idx >= 0) blocks[idx] = { ...blocks[idx], ...nextBlock } as ContentBlock;
+          else blocks.push(nextBlock);
+          return { ...m, blocks };
+        });
+        break;
+
       case 'file_write_prepare':
         this.splitPendingInterjectionIfReady(buf);
         this.ensureMessage(buf);

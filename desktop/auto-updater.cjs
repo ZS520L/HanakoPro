@@ -249,8 +249,8 @@ function setupAutoUpdater() {
   // 显式设置 feed URL，不依赖 app-update.yml（electron-builder --dir 不生成该文件）
   autoUpdater.setFeedURL({
     provider: "github",
-    owner: "liliMozi",
-    repo: "openhanako",
+    owner: "ZS520L",
+    repo: "HanakoPro",
   });
 
   autoUpdater.autoDownload = false;          // 由我们控制（磁盘空间检查后手动触发）
@@ -341,11 +341,21 @@ function registerIpcHandlers() {
   ipcMain.handle("auto-update-check", async () => {
     if (_updateState.status === "installing") return getState();
     resetState();
+    if (!app.isPackaged) {
+      setState({ status: "error", error: "dev_update_check_unavailable" });
+      return getState();
+    }
+    if (isRunningFromDmg()) {
+      setState({ status: "error", error: "running_from_dmg" });
+      return getState();
+    }
+    setState({ status: "checking", progress: null, error: null });
     try {
       await autoUpdater.checkForUpdates();
     } catch (err) {
       setState({ status: "error", error: err?.message || String(err) });
     }
+    return getState();
   });
 
   // 保留 channel 向后兼容，改为空操作（下载由 update-available 自动触发）

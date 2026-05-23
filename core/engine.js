@@ -126,6 +126,7 @@ import {
   getSkillNameTranslationCachePath,
   translateSkillNamesWithCache,
 } from "../lib/skills/skill-name-translation-cache.js";
+import { applyToolDescriptionOverrides } from "../shared/tool-description-overrides.js";
 
 export class HanaEngine {
   /**
@@ -443,6 +444,9 @@ export class HanaEngine {
   async createSession(mgr, cwd, mem, model, opts = {}) {
     return this._sessionCoord.createSession(mgr, cwd, mem, model, opts);
   }
+  async buildSystemPromptPreview(opts = {}) {
+    return this._sessionCoord.buildSystemPromptPreview(opts);
+  }
   async switchSession(p) {
     const result = await this._sessionCoord.switchSession(p);
     await this.syncWorkspaceSkillPaths(this.cwd, { reload: true, emitEvent: false });
@@ -668,7 +672,10 @@ export class HanaEngine {
     return this._checkpointStore.cleanup(cfg.retention_days || 1);
   }
   getLearnSkills() { return this._prefs.getLearnSkills(); }
-  setLearnSkills(p) { this._prefs.setLearnSkills(p); }
+  setLearnSkills(p) {
+    this._prefs.setLearnSkills(p);
+    if (this._skills) this._syncAllAgentSkills();
+  }
   getLocale() { return this._prefs.getLocale(); }
   setLocale(l) { this._prefs.setLocale(l); }
   getEditor() { return this._prefs.getEditor(); }
@@ -968,7 +975,11 @@ export class HanaEngine {
     }));
     const externalPaths = this._getResolvedExternalSkillPaths(null);
 
-    this._skills = new SkillManager({ skillsDir, externalPaths });
+    this._skills = new SkillManager({
+      skillsDir,
+      externalPaths,
+      getLearnSkills: () => this.getLearnSkills(),
+    });
     this._coreExtensionFactories = [
       /**
        * Provider payload 兼容化（chat 路径）。与 callText 共享 core/provider-compat.js，
@@ -1390,6 +1401,15 @@ export class HanaEngine {
         emitEvent: (event, sessionPath) => this._emitEvent(event, sessionPath),
       }),
     };
+
+    if (opts.skipToolDescriptionOverrides !== true) {
+      const toolOverrides = toolAgent?.config?.promptComposer?.toolOverrides || [];
+      result = {
+        ...result,
+        tools: applyToolDescriptionOverrides(result.tools, toolOverrides),
+        customTools: applyToolDescriptionOverrides(result.customTools, toolOverrides),
+      };
+    }
 
     // Startup assertion: every built-in tool must be categorized in
     // shared/tool-categories.js. All session-creation paths route through

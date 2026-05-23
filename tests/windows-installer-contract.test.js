@@ -84,15 +84,17 @@ describe("Windows NSIS installer contract", () => {
     expect(macro).not.toContain("un.atomicRMDir");
   });
 
-  it("overrides app-running detection to close Hanako and its bundled server explicitly", () => {
+  it("does not globally close official Hanako processes while checking the app is running", () => {
     const source = fs.readFileSync(path.join(root, "build", "installer.nsh"), "utf-8");
     const macro = extractMacro(source, "customCheckAppRunning");
 
-    expect(macro).toContain("Hanako.exe");
-    expect(macro).toContain("hana-server.exe");
+    expect(macro).toContain("hanakoFindInstallDirProcesses");
     expect(macro).toContain("appCannotBeClosed");
     expect(macro).toContain("MB_RETRYCANCEL");
     expect(macro).toContain("DetailPrint");
+    expect(macro).not.toContain("Hanako.exe");
+    expect(macro).not.toContain("hana-server.exe");
+    expect(macro).not.toContain("hanakoKillRunningProcesses");
     expect(macro).not.toContain("StartsWith('$INSTDIR'");
   });
 

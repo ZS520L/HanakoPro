@@ -1,0 +1,16 @@
+{
+  "id": "hanako",
+  "name": "Hanako",
+  "defaultMood": "idle",
+  "moods": {
+    "idle": "idle.png",
+    "thinking": "thinking.png",
+    "talking": "talking.png",
+    "working": "working.png",
+    "happy": "happy.png",
+    "error": "error.png",
+    "cute": "cute.png",
+    "sad": "sad.png",
+    "missing": "missing.png"
+  }
+}

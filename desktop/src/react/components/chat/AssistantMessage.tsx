@@ -2,7 +2,7 @@
  * AssistantMessage — 助手消息，遍历 ContentBlock 按类型渲染
  */
 
-import { memo, useCallback, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { StreamingMarkdownContent } from './StreamingMarkdownContent';
 import { MoodBlock } from './MoodBlock';
 import { ThinkingBlock } from './ThinkingBlock';
@@ -359,6 +359,8 @@ const ContentBlockView = memo(function ContentBlockView({ block, agentName, agen
     }
     case 'mood':
       return <MoodBlock yuan={block.yuan} text={block.text} />;
+    case 'vision_progress':
+      return <VisionProgressBlock block={block} />;
     case 'tool_group':
       return <ToolGroupBlock tools={block.tools} collapsed={block.collapsed} agentName={agentName} excludeTerminalIds={excludeTerminalIds} terminalAggregates={terminalAggregates} />;
     case 'text':
@@ -389,6 +391,65 @@ const ContentBlockView = memo(function ContentBlockView({ block, agentName, agen
 });
 
 // ── 简单子块组件（物种 B，统一接受 { block: any }） ──
+
+const VisionProgressBlock = memo(function VisionProgressBlock({ block }: { block: Extract<ContentBlock, { type: 'vision_progress' }> }) {
+  const responseRef = useRef<HTMLPreElement | null>(null);
+  const done = block.phase === 'done';
+  const failed = block.phase === 'error';
+  const responseText = block.error || block.response || '';
+  const modelName = block.model?.id || '视觉模型';
+  const provider = block.model?.provider ? ` · ${block.model.provider}` : '';
+  const targetName = block.targetModel?.id || '当前文本模型';
+  const elapsed = typeof block.elapsedMs === 'number' && Number.isFinite(block.elapsedMs)
+    ? `${(block.elapsedMs / 1000).toFixed(block.elapsedMs >= 10_000 ? 0 : 1)}s`
+    : '';
+  const imageLabel = block.imageCount && block.imageCount > 1
+    ? `${block.resourceLabel || '图片'} ${block.imageIndex || 1}/${block.imageCount}`
+    : (block.resourceLabel || '图片');
+  const summary = failed
+    ? '辅助视觉失败'
+    : done
+      ? (block.reused ? '复用辅助视觉结果' : '辅助视觉已返回')
+      : '辅助视觉正在分析';
+
+  useEffect(() => {
+    const el = responseRef.current;
+    if (!el || !responseText) return;
+    el.scrollTop = el.scrollHeight;
+  }, [responseText]);
+
+  return (
+    <details className={styles.visionProgressCard} open={!done && !failed}>
+      <summary className={styles.visionProgressSummary}>
+        {!done && !failed ? <span className={styles.visionProgressSpinner} /> : <span className={styles.visionProgressDot} data-error={failed ? 'true' : 'false'} />}
+        <span className={styles.visionProgressTitle}>{summary}</span>
+        <span className={styles.visionProgressMeta}>{modelName}{provider}{elapsed ? ` · ${elapsed}` : ''}</span>
+      </summary>
+      <div className={styles.visionProgressBody}>
+        <div className={styles.visionProgressGrid}>
+          <span>对象</span>
+          <strong>{imageLabel}</strong>
+          <span>视觉模型</span>
+          <strong>{modelName}{provider}</strong>
+          <span>递交给</span>
+          <strong>{targetName}</strong>
+        </div>
+        {block.question && (
+          <div className={styles.visionProgressSection}>
+            <div className={styles.visionProgressLabel}>问了什么</div>
+            <pre>{block.question}</pre>
+          </div>
+        )}
+        {responseText && (
+          <div className={styles.visionProgressSection}>
+            <div className={styles.visionProgressLabel}>{failed ? '错误' : '返回了什么'}</div>
+            <pre ref={responseRef}>{responseText}</pre>
+          </div>
+        )}
+      </div>
+    </details>
+  );
+});
 
 const EXT_LABELS: Record<string, string> = {
   pdf: 'PDF', doc: 'Word', docx: 'Word', xls: 'Excel', xlsx: 'Excel',

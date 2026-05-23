@@ -92,6 +92,75 @@ function throwAbortOrTimeout(err, signal, modelId) {
   throw err;
 }
 
+function textFromOpenAiStreamChunk(data) {
+  const choices = Array.isArray(data?.choices) ? data.choices : [];
+  return choices.map((choice) => {
+    const delta = choice?.delta;
+    if (typeof delta?.content === "string") return delta.content;
+    if (Array.isArray(delta?.content)) {
+      return delta.content
+        .map((part) => typeof part?.text === "string" ? part.text : "")
+        .join("");
+    }
+    return "";
+  }).join("");
+}
+
+function sseDataLines(frame) {
+  const lines = String(frame || "").split(/\r?\n/);
+  const data = [];
+  for (const line of lines) {
+    if (line.startsWith("data:")) data.push(line.slice(5).trimStart());
+  }
+  return data;
+}
+
+async function readOpenAiCompatibleStream(res, { onDelta, signal, modelId }) {
+  const reader = res.body?.getReader?.();
+  if (!reader) return "";
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let text = "";
+
+  const processFrame = (frame) => {
+    const dataLines = sseDataLines(frame);
+    if (!dataLines.length) return;
+    const raw = dataLines.join("\n").trim();
+    if (!raw || raw === "[DONE]") return;
+    let data;
+    try {
+      data = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const delta = textFromOpenAiStreamChunk(data);
+    if (!delta) return;
+    text += delta;
+    onDelta?.(delta, text);
+  };
+
+  try {
+    for (;;) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let idx;
+      while ((idx = buffer.search(/\r?\n\r?\n/)) >= 0) {
+        const frame = buffer.slice(0, idx);
+        const match = buffer.slice(idx).match(/^\r?\n\r?\n/);
+        buffer = buffer.slice(idx + (match?.[0]?.length || 2));
+        processFrame(frame);
+      }
+    }
+    buffer += decoder.decode();
+    if (buffer.trim()) processFrame(buffer);
+  } catch (err) {
+    throwAbortOrTimeout(err, signal, modelId);
+  }
+
+  return text;
+}
+
 function convertContentForApi(content, api) {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return typeof content === "undefined" ? "" : JSON.stringify(content);
@@ -149,6 +218,7 @@ function convertContentForApi(content, api) {
  * @param {number} [opts.timeoutMs]    超时毫秒 (default 60000)
  * @param {AbortSignal} [opts.signal]  外部取消信号
  * @param {boolean} [opts.returnUsage] 返回 { text, usage }，默认保持旧接口返回纯文本
+ * @param {(delta: string, accumulated: string) => void} [opts.onDelta] 流式文本增量回调（OpenAI-compatible）
  * @returns {Promise<string|{text: string, usage: object|null}>} 生成的文本
  */
 export async function callText({
@@ -165,6 +235,7 @@ export async function callText({
   timeoutMs = 60_000,
   signal,
   returnUsage = false,
+  onDelta,
 }) {
   // 同时接受完整 model 对象和裸 id。modelObj 用于 provider-compat 决策；modelId 入 payload。
   const modelObj = typeof model === "object" && model !== null ? model : null;
@@ -263,6 +334,8 @@ export async function callText({
     mode: "utility",
     ...(explicitMaxTokens !== null && { outputBudgetSource }),
   });
+  const shouldStream = api === "openai-completions" && typeof onDelta === "function";
+  if (shouldStream) body = { ...body, stream: true };
 
   // ── 4. 发送请求 ──
   const SLOW_THRESHOLD_MS = 15_000;
@@ -281,6 +354,57 @@ export async function callText({
     clearTimeout(slowTimer);
     throwAbortOrTimeout(err, signal, modelId);
   });
+
+  if (shouldStream) {
+    if (!res.ok) {
+      let rawText = "";
+      try {
+        rawText = await res.text();
+      } catch (err) {
+        clearTimeout(slowTimer);
+        throwAbortOrTimeout(err, signal, modelId);
+      }
+      clearTimeout(slowTimer);
+      let data;
+      try { data = rawText ? JSON.parse(rawText) : null; } catch {}
+      const message = data?.error?.message || data?.message || rawText || `HTTP ${res.status}`;
+      if (res.status === 401 || res.status === 403) {
+        throw new AppError('LLM_AUTH_FAILED', { context: { model: modelId, status: res.status } });
+      }
+      if (res.status === 429) {
+        throw new AppError('LLM_RATE_LIMITED', { context: { model: modelId } });
+      }
+      throw new AppError('UNKNOWN', { message, context: { model: modelId, status: res.status } });
+    }
+
+    let text = await readOpenAiCompatibleStream(res, { onDelta, signal, modelId });
+    clearTimeout(slowTimer);
+    const rawTextBeforeThinkingStrip = text;
+    const thinkingStripped = stripTaggedThinking(text);
+    text = thinkingStripped.text;
+    if (!text) {
+      if (signal?.aborted) throw createUserAbortError();
+      if (combinedSignal.aborted) throw new AppError('LLM_TIMEOUT', { context: { model: modelId } });
+      throw new AppError('LLM_EMPTY_RESPONSE', {
+        message: thinkingStripped.removedThinking && rawTextBeforeThinkingStrip.trim()
+          ? "LLM returned only thinking content without visible text"
+          : undefined,
+        context: {
+          model: modelId,
+          ...(thinkingStripped.removedThinking && rawTextBeforeThinkingStrip.trim() ? { reason: "empty_after_thinking" } : {}),
+        },
+      });
+    }
+    logLlmUsage({
+      source: "utility",
+      api,
+      provider,
+      modelId,
+      usage: null,
+      costRates: modelObj?.cost,
+    });
+    return returnUsage ? { text, usage: null } : text;
+  }
 
   // ── 5. 解析响应 ──
   let rawText;

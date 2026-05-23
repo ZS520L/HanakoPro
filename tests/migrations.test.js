@@ -11,7 +11,7 @@ import { getAgentPhoneProjectionPath } from "../lib/conversations/agent-phone-pr
 
 // ── 测试工具 ────────────────────────────────────────────────────────────────
 
-const LATEST_DATA_VERSION = 25;
+const LATEST_DATA_VERSION = 26;
 
 function makeTmpDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "hana-migrations-"));
@@ -223,7 +223,7 @@ describe("migration #12: backfill legacy session files into sidecars", () => {
     return prefs;
   }
 
-  it("registers legacy stage_files and artifacts without rewriting the session jsonl", () => {
+  it("registers legacy stage_files and artifacts before the session format migration", () => {
     writeAgentConfig(agentsDir, "hana", { agent: { name: "Hana" } });
     const sessionPath = path.join(agentsDir, "hana", "sessions", "legacy.jsonl");
     const stagePath = path.join(tmpDir, "legacy-image.png");
@@ -258,7 +258,9 @@ describe("migration #12: backfill legacy session files into sidecars", () => {
       expect.objectContaining({ filePath: stagePath, origin: "stage_files", status: "available" }),
       expect.objectContaining({ filePath: artifactPath, origin: "agent_artifact", status: "available" }),
     ]));
-    expect(fs.readFileSync(sessionPath, "utf-8")).toBe(before);
+    const migratedEntries = readSessionJsonl(sessionPath);
+    expect(migratedEntries[0].type).toBe("session");
+    expect(fs.readFileSync(`${sessionPath}.legacy-no-header.bak`, "utf-8")).toBe(before);
     expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);
   });
 
@@ -402,6 +404,130 @@ describe("migration #13: normalize recent legacy compatibility state", () => {
       token_budget: 1000,
     });
     expect(readAgentConfig(agentsDir, "explicit-on").memory).toEqual({ enabled: true });
+  });
+});
+
+describe("migration #26: legacy sessions to per-agent Pi format", () => {
+  let tmpDir, agentsDir, userDir;
+
+  beforeEach(() => {
+    tmpDir = makeTmpDir();
+    agentsDir = path.join(tmpDir, "agents");
+    userDir = path.join(tmpDir, "user");
+    fs.mkdirSync(agentsDir, { recursive: true });
+  });
+
+  afterEach(() => { fs.rmSync(tmpDir, { recursive: true, force: true }); });
+
+  function runMigration26() {
+    const prefs = makePrefs(userDir);
+    prefs.savePreferences({ _dataVersion: 25, primaryAgent: "hanako" });
+    runMigrations({
+      hanakoHome: tmpDir,
+      agentsDir,
+      prefs,
+      providerRegistry: makeRegistryWithModels({}),
+      log: () => {},
+    });
+    return prefs;
+  }
+
+  it("copies root-level legacy sessions into the primary agent sessions directory and adds a Pi header", () => {
+    writeAgentConfig(agentsDir, "hanako", {
+      agent: { name: "Hanako" },
+      models: { chat: { id: "deepseek-chat", provider: "deepseek" } },
+    });
+    const legacyRoot = path.join(tmpDir, "sessions");
+    const legacyPath = path.join(legacyRoot, "legacy.jsonl");
+    writeSessionJsonl(legacyPath, [
+      { role: "user", content: "hello", cwd: "/legacy-workspace" },
+      {
+        role: "assistant",
+        content: "hi",
+        provider: "deepseek",
+        model: "deepseek-chat",
+      },
+    ]);
+    const original = fs.readFileSync(legacyPath, "utf-8");
+    fs.writeFileSync(
+      path.join(legacyRoot, "session-titles.json"),
+      JSON.stringify({ [legacyPath]: "Legacy Title" }, null, 2),
+      "utf-8",
+    );
+    fs.writeFileSync(
+      path.join(legacyRoot, "session-meta.json"),
+      JSON.stringify({ "legacy.jsonl": { memoryEnabled: false } }, null, 2),
+      "utf-8",
+    );
+
+    const prefs = runMigration26();
+
+    const migratedPath = path.join(agentsDir, "hanako", "sessions", "legacy.jsonl");
+    const migrated = readSessionJsonl(migratedPath);
+    expect(migrated[0]).toMatchObject({ type: "session", version: 3, cwd: "/legacy-workspace" });
+    expect(migrated[1]).toMatchObject({ type: "model_change", provider: "deepseek", modelId: "deepseek-chat" });
+    expect(migrated[2]).toMatchObject({ type: "message", message: { role: "user" } });
+    expect(migrated[2].parentId).toBe(migrated[1].id);
+    expect(readJson(path.join(agentsDir, "hanako", "sessions", "session-titles.json"))[migratedPath]).toBe("Legacy Title");
+    expect(readJson(path.join(agentsDir, "hanako", "sessions", "session-meta.json"))["legacy.jsonl"]).toMatchObject({ memoryEnabled: false });
+    expect(fs.readFileSync(legacyPath, "utf-8")).toBe(original);
+    expect(prefs.getPreferences()._dataVersion).toBe(LATEST_DATA_VERSION);
+  });
+
+  it("patches existing agent legacy JSONL in place and keeps a backup", () => {
+    writeAgentConfig(agentsDir, "hanako", {
+      agent: { name: "Hanako" },
+      models: { chat: { id: "fallback-chat", provider: "fallback-provider" } },
+    });
+    const sessionPath = path.join(agentsDir, "hanako", "sessions", "old.jsonl");
+    writeSessionJsonl(sessionPath, [
+      { role: "user", content: "old question" },
+      { role: "assistant", content: "old answer" },
+    ]);
+    const before = fs.readFileSync(sessionPath, "utf-8");
+
+    runMigration26();
+
+    const migrated = readSessionJsonl(sessionPath);
+    expect(migrated[0].type).toBe("session");
+    expect(migrated[1]).toMatchObject({ type: "model_change", provider: "fallback-provider", modelId: "fallback-chat" });
+    expect(migrated[2]).toMatchObject({ type: "message", message: { role: "user" } });
+    expect(migrated[2].parentId).toBe(migrated[1].id);
+    expect(migrated[3].parentId).toBe(migrated[2].id);
+    expect(fs.readFileSync(`${sessionPath}.legacy-no-header.bak`, "utf-8")).toBe(before);
+  });
+
+  it("does not rewrite sessions that already have a Pi session header", () => {
+    writeAgentConfig(agentsDir, "hanako", { agent: { name: "Hanako" } });
+    const sessionPath = path.join(agentsDir, "hanako", "sessions", "current.jsonl");
+    fs.mkdirSync(path.dirname(sessionPath), { recursive: true });
+    fs.writeFileSync(
+      sessionPath,
+      [
+        JSON.stringify({ type: "session", version: 3, id: "sess-1", timestamp: "2026-05-20T00:00:00.000Z", cwd: "/x" }),
+        JSON.stringify({ type: "message", id: "m1", parentId: null, timestamp: "2026-05-20T00:00:00.001Z", message: { role: "user", content: "hi" } }),
+      ].join("\n") + "\n",
+      "utf-8",
+    );
+    const before = fs.readFileSync(sessionPath, "utf-8");
+
+    runMigration26();
+
+    expect(fs.readFileSync(sessionPath, "utf-8")).toBe(before);
+    expect(fs.existsSync(`${sessionPath}.legacy-no-header.bak`)).toBe(false);
+  });
+
+  it("does not import corrupt root-level jsonl files into agent sessions", () => {
+    writeAgentConfig(agentsDir, "hanako", { agent: { name: "Hanako" } });
+    const legacyRoot = path.join(tmpDir, "sessions");
+    fs.mkdirSync(legacyRoot, { recursive: true });
+    const corruptPath = path.join(legacyRoot, "bad.jsonl");
+    fs.writeFileSync(corruptPath, "{not json}\n", "utf-8");
+
+    runMigration26();
+
+    expect(fs.existsSync(corruptPath)).toBe(true);
+    expect(fs.existsSync(path.join(agentsDir, "hanako", "sessions", "bad.jsonl"))).toBe(false);
   });
 });
 
@@ -1051,7 +1177,7 @@ describe("migration #4 — migrateSubagentExecutorMetadata", () => {
     runMigration4(prefs);
 
     const entries = readSessionJsonl(parentSessionPath);
-    const details = entries[1].message.details;
+    const details = entries.find(entry => entry.message?.toolName === "subagent")?.message.details;
     expect(details.executorAgentId).toBe("butter");
     expect(details.executorAgentNameSnapshot).toBe("butter");
     expect(details.executorMetaVersion).toBe(1);
@@ -1089,7 +1215,7 @@ describe("migration #4 — migrateSubagentExecutorMetadata", () => {
     runMigration4(prefs);
 
     const entries = readSessionJsonl(parentSessionPath);
-    const details = entries[1].message.details;
+    const details = entries.find(entry => entry.message?.toolName === "subagent")?.message.details;
     expect(details.executorAgentId).toBe("hanako");
     expect(details.executorAgentNameSnapshot).toBe("Hanako");
     expect(details.agentId).toBe("hanako");

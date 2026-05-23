@@ -48,6 +48,7 @@ export async function prepareVisionInputForTextOnlyModel({
   visionPolicyTarget,
   warn,
   signal,
+  emitProgress,
 }) {
   const inputMods = targetModel?.input;
   if (!opts?.images?.length || !Array.isArray(inputMods) || inputMods.includes("image")) {
@@ -68,6 +69,7 @@ export async function prepareVisionInputForTextOnlyModel({
       images: opts.images,
       imageAttachmentPaths: opts.imageAttachmentPaths,
       signal,
+      emitProgress,
     });
     if (signal?.aborted) throw abortError();
     return { text: prepared.text, opts: { ...opts, images: prepared.images } };

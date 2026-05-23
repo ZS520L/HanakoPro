@@ -11,37 +11,6 @@ CRCCheck off
 
 !include LogicLib.nsh
 
-!macro hanakoFindProcess _NAME _RETURN
-  nsExec::ExecToLog `"$SYSDIR\cmd.exe" /D /C tasklist /FI "IMAGENAME eq ${_NAME}" /FO CSV | "$SYSDIR\find.exe" "${_NAME}"`
-  Pop ${_RETURN}
-!macroend
-
-!macro hanakoFindRunningProcesses _RETURN
-  !insertmacro hanakoFindProcess Hanako.exe ${_RETURN}
-  ${If} ${_RETURN} != 0
-    !insertmacro hanakoFindProcess hana-server.exe ${_RETURN}
-  ${EndIf}
-!macroend
-
-!macro hanakoKillProcess _NAME _FORCE
-  Push $0
-  Push $1
-  ${If} ${_FORCE} == 1
-    StrCpy $0 "/F"
-  ${Else}
-    StrCpy $0 ""
-  ${EndIf}
-  nsExec::ExecToLog `"$SYSDIR\cmd.exe" /D /C taskkill $0 /T /IM "${_NAME}"`
-  Pop $1
-  Pop $1
-  Pop $0
-!macroend
-
-!macro hanakoKillRunningProcesses _FORCE
-  !insertmacro hanakoKillProcess Hanako.exe ${_FORCE}
-  !insertmacro hanakoKillProcess hana-server.exe ${_FORCE}
-!macroend
-
 !macro hanakoWriteInstallDirProcessCleaner _SCRIPT
   Push $0
   FileOpen $0 "${_SCRIPT}" w
@@ -214,38 +183,6 @@ CRCCheck off
       ${EndIf}
   ${EndIf}
 
-  ${IfNot} ${isUpdated}
-  !insertmacro hanakoFindRunningProcesses $R0
-  ${If} $R0 == 0
-    DetailPrint "Detected Hanako.exe or hana-server.exe; closing them before install."
-    !insertmacro hanakoKillRunningProcesses 0
-    Sleep 500
-
-    !insertmacro hanakoFindRunningProcesses $R0
-    ${If} $R0 == 0
-      !insertmacro hanakoKillRunningProcesses 1
-      Sleep 1000
-    ${EndIf}
-
-    StrCpy $R1 0
-    hanako_check_processes:
-      !insertmacro hanakoFindRunningProcesses $R0
-      ${If} $R0 == 0
-        IntOp $R1 $R1 + 1
-        DetailPrint "Waiting for Hanako.exe or hana-server.exe to close."
-        ${If} $R1 > 2
-          DetailPrint "Hanako.exe or hana-server.exe still running; asking user to retry."
-          MessageBox MB_RETRYCANCEL|MB_ICONEXCLAMATION "$(appCannotBeClosed)" /SD IDCANCEL IDRETRY hanako_retry_close
-          Quit
-          hanako_retry_close:
-          StrCpy $R1 0
-        ${EndIf}
-        !insertmacro hanakoKillRunningProcesses 1
-        Sleep 1000
-        Goto hanako_check_processes
-      ${EndIf}
-  ${EndIf}
-  ${EndIf}
 !macroend
 
 !macro hanakoCleanBundledServer

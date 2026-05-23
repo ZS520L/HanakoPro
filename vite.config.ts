@@ -31,6 +31,8 @@ const CSP_PROFILES: Record<string, string> = {
   // 终端窗口：需要 WS/HTTP 到 server，xterm 使用 inline style
   'terminal.html':
     "default-src 'self'; connect-src 'self' ws://127.0.0.1:* http://127.0.0.1:*; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'; font-src 'self' data:",
+  'desktop-pet.html':
+    "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self'; img-src 'self' data: file:",
 };
 
 function injectCsp(): Plugin {
@@ -215,6 +217,7 @@ export default defineConfig({
         'browser-viewer': path.resolve(__dirname, 'desktop/src/browser-viewer.html'),
         'viewer-window': path.resolve(__dirname, 'desktop/src/viewer-window.html'),
         terminal: path.resolve(__dirname, 'desktop/src/terminal.html'),
+        'desktop-pet': path.resolve(__dirname, 'desktop/src/desktop-pet.html'),
       },
     },
   },

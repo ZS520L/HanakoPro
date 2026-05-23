@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 助手管理 REST 路由
  *
  * GET    /api/agents              — 列出所有助手
@@ -6,10 +6,10 @@
  * POST   /api/agents/switch       — 切换到指定助手
  * DELETE /api/agents/:id          — 删除助手
  * PUT    /api/agents/primary      — 设置主助手
- * GET    /api/agents/:id/avatar   — 获取指定助手的头像
- * POST   /api/agents/:id/avatar   — 上传指定助手的头像
- * GET    /api/agents/:id/config   — 读取指定助手的 config
- * PUT    /api/agents/:id/config   — 写入指定助手的 config
+ * GET    /api/agents/:id/avatar   — 获取指定助手头像
+ * POST   /api/agents/:id/avatar   — 上传指定助手头像
+ * GET    /api/agents/:id/config   — 读取指定助手 config
+ * PUT    /api/agents/:id/config   — 写入指定助手 config
  * GET    /api/agents/:id/identity — 读取 identity.md
  * PUT    /api/agents/:id/identity — 写入 identity.md
  * GET    /api/agents/:id/ishiki   — 读取 ishiki.md
@@ -42,6 +42,7 @@ import {
   hasInlineProviderCredentialPatch,
 } from "./provider-credentials.js";
 import { mergeWorkspaceHistory } from "../../shared/workspace-history.js";
+import { summarizeToolDescriptions } from "../../shared/tool-description-overrides.js";
 
 // ── 工具函数 ──
 
@@ -138,7 +139,7 @@ function emitAgentConfigAppEvents(engine, agentId, { globalFields, agentPartial,
   }
 }
 
-// 本地应用，API key 不做掩码，前端用 type="password" 控制显隐
+// 本地应用：API key 不做掩码，前端用 type="password" 控制显示
 
 export function createAgentsRoute(engine) {
   const route = new Hono();
@@ -253,9 +254,9 @@ export function createAgentsRoute(engine) {
     }
   });
 
-  // ════════════════════════════
-  //  排序
-  // ════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  鎺掑簭
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.put("/agents/order", async (c) => {
     try {
@@ -271,9 +272,9 @@ export function createAgentsRoute(engine) {
     }
   });
 
-  // ════════════════════════════
-  //  头像
-  // ════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  澶村儚
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.get("/agents/:id/avatar", async (c) => {
     const id = c.req.param("id");
@@ -336,9 +337,8 @@ export function createAgentsRoute(engine) {
     return c.json({ ok: true });
   });
 
-  // ════════════════════════════
-  //  Config（config.yaml）
-  // ════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  Config锛坈onfig.yaml锛?  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.get("/agents/:id/config", async (c) => {
     const id = c.req.param("id");
@@ -347,23 +347,20 @@ export function createAgentsRoute(engine) {
     }
     try {
       const configPath = path.join(agentDir(engine, id), "config.yaml");
-      // 直接解析 YAML，不走 loadConfig 全局缓存
+      // 鐩存帴瑙ｆ瀽 YAML锛屼笉璧?loadConfig 鍏ㄥ眬缂撳瓨
       const config = YAML.load(await fs.readFile(configPath, "utf-8")) || {};
 
-      // API key 不做掩码（本地应用，前端用 type="password" 控制显隐）
       normalizeExperienceConfigForResponse(config);
 
-      // 附带 raw 结构
+      // 闄勫甫 raw 缁撴瀯
       config._raw = {
         api: { provider: config.api?.provider || "", base_url: config.api?.base_url || "" },
         embedding_api: { provider: config.embedding_api?.provider || "", base_url: config.embedding_api?.base_url || "" },
         utility_api: { provider: config.utility_api?.provider || "", base_url: config.utility_api?.base_url || "" },
       };
 
-      // 自动注入全局字段（schema-driven，替代手写逐个注入）
       injectGlobalFields(config, engine);
 
-      // 供应商列表
       try {
         const rawProviders = engine.providerRegistry.getAllProvidersRaw();
         const providerEntries = {};
@@ -384,13 +381,13 @@ export function createAgentsRoute(engine) {
 
       // Expose the agent's currently-registered tool name list so the settings
       // UI can decide which optional-tool toggles to render. Uses the keyed
-      // engine.getAgent(id) lookup rather than the focus pointer — state
+      // engine.getAgent(id) lookup rather than the focus pointer 鈥?state
       // ownership must be uniquely determined, not derived from focus.
       const agent = engine.getAgent(id);
       if (!agent) {
         // agentExists(engine, id) already guarded above; reaching here means
         // engine.getAgent diverged from agentExists. That's a bug, not a missing
-        // resource — log it but don't 500 the response.
+        // resource 鈥?log it but don't 500 the response.
         console.warn(
           `GET /agents/${id}/config: agent not found by keyed lookup despite passing agentExists check`
         );
@@ -440,13 +437,13 @@ export function createAgentsRoute(engine) {
         return c.json({ error: "experience.enabled must be a boolean" }, 400);
       }
 
-      // ── schema-driven 全局字段分流 ──
+      // 鈹€鈹€ schema-driven 鍏ㄥ眬瀛楁鍒嗘祦 鈹€鈹€
       const { global: globalFields, agent: agentPartial } = splitByScope(partial);
       for (const { setter, value } of globalFields) {
         engine[setter](value);
       }
 
-      // providers 块 → 全局 added-models.yaml
+      // providers 鍧?鈫?鍏ㄥ眬 added-models.yaml
       let providersChanged = false;
       if (agentPartial.providers) {
         for (const [name, data] of Object.entries(agentPartial.providers)) {
@@ -460,7 +457,7 @@ export function createAgentsRoute(engine) {
         providersChanged = true;
       }
 
-      // 内联 API 凭证 → 全局 added-models.yaml 对应条目
+      // 鍐呰仈 API 鍑瘉 鈫?鍏ㄥ眬 added-models.yaml 瀵瑰簲鏉＄洰
       for (const blockName of ["api", "embedding_api", "utility_api"]) {
         const block = agentPartial[blockName];
         if (hasInlineProviderCredentialPatch(block)) {
@@ -479,13 +476,13 @@ export function createAgentsRoute(engine) {
         }
       }
 
-      // providers 变更后确保运行时刷新
+      // providers 鍙樻洿鍚庣‘淇濊繍琛屾椂鍒锋柊
       if (providersChanged) {
         await engine.onProviderChanged();
         clearConfigCache();
       }
 
-      // providers 是全局状态，变更后无论编辑的是哪个 agent，运行时都要刷新
+      // providers 鏄叏灞€鐘舵€侊紝鍙樻洿鍚庢棤璁虹紪杈戠殑鏄摢涓?agent锛岃繍琛屾椂閮借鍒锋柊
       if (providersChanged) {
         await engine.updateConfig({});
       }
@@ -495,7 +492,6 @@ export function createAgentsRoute(engine) {
         return c.json({ ok: true });
       }
 
-      // 记忆总开关：写入时间戳（用于过滤关闭期间的 session）
       if (agentPartial.memory && "enabled" in agentPartial.memory) {
         const now = new Date().toISOString();
         if (agentPartial.memory.enabled === false) {
@@ -508,9 +504,8 @@ export function createAgentsRoute(engine) {
       const configPath = path.join(agentDir(engine, id), "config.yaml");
       saveConfig(configPath, agentPartial);
       engine.invalidateAgentListCache();
-      // 触发目标 agent 模块刷新 + prompt 重建
+      // 瑙﹀彂鐩爣 agent 妯″潡鍒锋柊 + prompt 閲嶅缓
       await engine.updateConfig(agentPartial, { agentId: id });
-      // 记忆总开关：无论是否 active agent，都需要刷新运行时状态（因为 ticker 后台在跑）
       if (agentPartial.memory && "enabled" in agentPartial.memory) {
         engine.setMemoryMasterEnabled(id, agentPartial.memory.enabled !== false);
       }
@@ -521,9 +516,62 @@ export function createAgentsRoute(engine) {
     }
   });
 
-  // ════════════════════════════
-  //  Identity（identity.md）
-  // ════════════════════════════
+  route.get("/agents/:id/prompt-composer-source", async (c) => {
+    const id = c.req.param("id");
+    if (!validateId(id) || !agentExists(engine, id)) {
+      return c.json({ error: "agent not found" }, 404);
+    }
+    try {
+      const agent = engine.getAgent(id);
+      if (!agent) return c.json({ error: "agent not found" }, 404);
+      const prompt = typeof agent.getPromptComposerSource === "function"
+        ? agent.getPromptComposerSource({ forceMemoryEnabled: agent.memoryMasterEnabled })
+        : { blocks: [] };
+      const cwd = engine.getHomeCwd?.(id) || process.cwd();
+      const builtTools = engine.buildTools(cwd, agent.getToolsSnapshot?.({ forceMemoryEnabled: agent.memoryMasterEnabled }) || agent.tools || [], {
+        agentDir: agent.agentDir,
+        workspace: cwd,
+        skipToolDescriptionOverrides: true,
+      });
+      return c.json({
+        promptBlocks: prompt.blocks || [],
+        tools: summarizeToolDescriptions([
+          ...(builtTools.tools || []),
+          ...(builtTools.customTools || []),
+        ]),
+      });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+  route.post("/agents/:id/system-prompt-preview", async (c) => {
+    const id = c.req.param("id");
+    if (!validateId(id) || !agentExists(engine, id)) {
+      return c.json({ error: "agent not found" }, 404);
+    }
+    try {
+      const body = await safeJson(c);
+      if (!body || typeof body !== "object") {
+        return c.json({ error: "invalid JSON body" }, 400);
+      }
+      const workspaceFolders = Array.isArray(body.workspaceFolders)
+        ? body.workspaceFolders.filter((item) => typeof item === "string" && item.trim())
+        : [];
+      const preview = await engine.buildSystemPromptPreview({
+        agentId: id,
+        cwd: typeof body.cwd === "string" && body.cwd.trim() ? body.cwd : null,
+        memoryEnabled: body.memoryEnabled !== false,
+        workspaceFolders,
+        ...(hasOwn(body, "promptComposer") ? { promptComposer: body.promptComposer } : {}),
+      });
+      return c.json(preview);
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  Identity锛坕dentity.md锛?  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.get("/agents/:id/identity", async (c) => {
     const id = c.req.param("id");
@@ -560,9 +608,8 @@ export function createAgentsRoute(engine) {
     }
   });
 
-  // ════════════════════════════
-  //  Ishiki（ishiki.md）
-  // ════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  Ishiki锛坕shiki.md锛?  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.get("/agents/:id/ishiki", async (c) => {
     const id = c.req.param("id");
@@ -598,9 +645,8 @@ export function createAgentsRoute(engine) {
     }
   });
 
-  // ════════════════════════════
-  //  Public Ishiki（public-ishiki.md）
-  // ════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  Public Ishiki锛坧ublic-ishiki.md锛?  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.get("/agents/:id/public-ishiki", async (c) => {
     const id = c.req.param("id");
@@ -636,9 +682,8 @@ export function createAgentsRoute(engine) {
     }
   });
 
-  // ════════════════════════════
-  //  Pinned（pinned.md）
-  // ════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  Pinned锛坧inned.md锛?  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.get("/agents/:id/pinned", async (c) => {
     const id = c.req.param("id");
@@ -685,9 +730,8 @@ export function createAgentsRoute(engine) {
     }
   });
 
-  // ════════════════════════════
-  //  Experience（experience/ 目录）
-  // ════════════════════════════
+  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
+  //  Experience锛坋xperience/ 鐩綍锛?  // 鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲鈺愨晲
 
   route.get("/agents/:id/experience", async (c) => {
     const id = c.req.param("id");
@@ -732,7 +776,6 @@ export function createAgentsRoute(engine) {
       const expDir = path.join(dir, "experience");
       const indexPath = path.join(dir, "experience.md");
 
-      // 解析合并 markdown → 按 ^# 分割成分类
       const categories = new Map();
       let currentCat = null;
       const lines = content.split("\n");

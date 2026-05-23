@@ -11,17 +11,18 @@
 .tabbar {
     display: flex;
     align-items: stretch;
+    height: 34px;
+    flex-shrink: 0;
+    overflow: hidden;
     background: #2d2d2d;
     border-bottom: 1px solid #1a1a1a;
     -webkit-app-region: no-drag;
-    height: 32px;
-    flex-shrink: 0;
-    overflow: hidden;
 }
 
 .tabs {
     display: flex;
     flex: 1;
+    min-width: 0;
     overflow-x: auto;
     overflow-y: hidden;
 }
@@ -33,15 +34,15 @@
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 0 8px 0 12px;
     height: 100%;
+    min-width: 116px;
+    max-width: 220px;
+    padding: 0 8px 0 12px;
     border-right: 1px solid #1a1a1a;
     color: #b8b8b8;
     cursor: pointer;
     user-select: none;
-    max-width: 220px;
-    min-width: 100px;
-    transition: background 0.12s;
+    transition: background 0.12s, color 0.12s;
 }
 
 .tab:hover {
@@ -69,16 +70,16 @@
 }
 
 .tabClose {
-    background: transparent;
-    border: none;
-    color: inherit;
-    cursor: pointer;
     width: 18px;
     height: 18px;
-    line-height: 18px;
     padding: 0;
+    border: none;
     border-radius: 3px;
+    background: transparent;
+    color: inherit;
+    cursor: pointer;
     font-size: 14px;
+    line-height: 18px;
     opacity: 0.6;
 }
 
@@ -87,25 +88,48 @@
     opacity: 1;
 }
 
-.newBtn {
-    background: transparent;
-    border: none;
-    color: #b8b8b8;
-    cursor: pointer;
-    width: 32px;
+.windowControls {
+    display: flex;
+    align-items: center;
+    gap: 6px;
     height: 100%;
-    font-size: 18px;
-    transition: background 0.12s, color 0.12s;
+    padding: 0 10px 0 12px;
+    flex-shrink: 0;
+    border-left: 1px solid #1f1f1f;
+    background: #2d2d2d;
 }
 
-.newBtn:hover:not(:disabled) {
-    background: #353535;
+.iconBtn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 24px;
+    padding: 0;
+    border: none;
+    border-radius: 5px;
+    background: transparent;
+    color: #b8b8b8;
+    cursor: pointer;
+    font-size: 15px;
+    line-height: 1;
+    transition: background 0.12s, color 0.12s;
+    -webkit-app-region: no-drag;
+}
+
+.iconBtn:hover:not(:disabled) {
+    background: #404040;
     color: #fff;
 }
 
-.newBtn:disabled {
-    opacity: 0.4;
+.iconBtn:disabled {
+    opacity: 0.35;
     cursor: not-allowed;
+}
+
+.closeBtn:hover:not(:disabled) {
+    background: #c42b1c;
+    color: #fff;
 }
 
 .body {

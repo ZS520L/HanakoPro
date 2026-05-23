@@ -127,6 +127,35 @@ describe("auto-updater", () => {
     expect(mod.getState().status).toBe("latest");
   });
 
+  it("manual update check immediately enters checking state", async () => {
+    const win = initWithMockWindow();
+
+    const state = await ipcHandlers["auto-update-check"]();
+
+    expect(mockAutoUpdater.checkForUpdates).toHaveBeenCalledOnce();
+    expect(state.status).toBe("checking");
+    expect(win.webContents.send).toHaveBeenCalledWith("auto-update-state", expect.objectContaining({ status: "checking" }));
+  });
+
+  it("manual update check reports a visible message in development mode", async () => {
+    const { app } = await import("electron");
+    app.isPackaged = false;
+    const win = initWithMockWindow();
+
+    const state = await ipcHandlers["auto-update-check"]();
+
+    expect(mockAutoUpdater.checkForUpdates).not.toHaveBeenCalled();
+    expect(state).toEqual(expect.objectContaining({
+      status: "error",
+      error: "dev_update_check_unavailable",
+    }));
+    expect(win.webContents.send).toHaveBeenCalledWith("auto-update-state", expect.objectContaining({
+      status: "error",
+      error: "dev_update_check_unavailable",
+    }));
+    app.isPackaged = true;
+  });
+
   it("should set allowPrerelease on channel change", () => {
     initWithMockWindow();
     mod.setUpdateChannel("beta");
@@ -204,7 +233,7 @@ describe("auto-updater", () => {
     expect(shutdownServer).not.toHaveBeenCalled();
     expect(mockAutoUpdater.quitAndInstall).not.toHaveBeenCalled();
     await new Promise(resolve => setImmediate(resolve));
-    expect(mockAutoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true);
+    expect(mockAutoUpdater.quitAndInstall).toHaveBeenCalledWith(process.platform !== "win32", true);
     expect(mod.getState()).toEqual(expect.objectContaining({ status: "installing", version: "2.0.0" }));
     expect(win.webContents.send).toHaveBeenCalledWith("auto-update-state", expect.objectContaining({ status: "installing" }));
     await expect(installPromise).resolves.toBe(true);
@@ -224,7 +253,7 @@ describe("auto-updater", () => {
     expect(shutdownServer).not.toHaveBeenCalled();
     expect(mockAutoUpdater.quitAndInstall).not.toHaveBeenCalled();
     await new Promise(resolve => setImmediate(resolve));
-    expect(mockAutoUpdater.quitAndInstall).toHaveBeenCalledWith(true, true);
+    expect(mockAutoUpdater.quitAndInstall).toHaveBeenCalledWith(process.platform !== "win32", true);
     await expect(installPromise).resolves.toBe(true);
   });
 

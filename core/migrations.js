@@ -9,6 +9,7 @@
  */
 import fs from "fs";
 import path from "path";
+import { createHash } from "crypto";
 import YAML from "js-yaml";
 import { safeReadYAMLSync } from "../shared/safe-fs.js";
 import { ensureLocalIdentityRegistries } from "./server-identity.js";
@@ -83,6 +84,8 @@ const migrations = {
   24: migrateChannelPhoneGuardLimitDefaults,
   // 频道主动发起开关显式化，旧频道保持开启
   25: migrateChannelPhoneProactiveDefaults,
+  // GitHub/旧版单 agent 会话迁移到当前 per-agent + Pi v3 session 格式
+  26: migrateLegacySessionsToPerAgentPiFormat,
 };
 
 // ── Runner ──────────────────────────────────────────────────────────────────
@@ -2154,6 +2157,359 @@ function migrateChannelPhoneProactiveDefaults(ctx) {
   }
 
   log?.(`[migrations] #25: channel phone proactive defaults patched (${patched})`);
+}
+
+function migrateLegacySessionsToPerAgentPiFormat(ctx) {
+  const { hanakoHome, agentsDir, prefs, log } = ctx;
+  if (!hanakoHome || !agentsDir) return;
+
+  const targetAgentId = resolveLegacySessionTargetAgentId({ agentsDir, prefs });
+  if (!targetAgentId) {
+    log?.("[migrations] #26: skipped legacy session migration (no target agent)");
+    return;
+  }
+
+  const targetSessionDir = path.join(agentsDir, targetAgentId, "sessions");
+  fs.mkdirSync(targetSessionDir, { recursive: true });
+  const targetModelRef = readAgentChatModelRef(agentsDir, targetAgentId);
+
+  const rootSessionsDir = path.join(hanakoHome, "sessions");
+  const rootLegacyFiles = listDirectJsonlFiles(rootSessionsDir);
+  const rootTitles = readJsonObject(path.join(rootSessionsDir, "session-titles.json"));
+  const rootMeta = readJsonObject(path.join(rootSessionsDir, "session-meta.json"));
+  const titleWrites = {};
+  const metaWrites = {};
+  let copied = 0;
+  let converted = 0;
+  let skipped = 0;
+
+  for (const sourcePath of rootLegacyFiles) {
+    const destPath = uniqueLegacySessionDestination(targetSessionDir, path.basename(sourcePath));
+    try {
+      fs.copyFileSync(sourcePath, destPath);
+      const changed = ensurePiSessionJsonlHeader(destPath, { sourcePath, fallbackModelRef: targetModelRef });
+      if (!looksLikePiSessionJsonlSync(destPath)) {
+        try { fs.rmSync(destPath, { force: true }); } catch {}
+        skipped++;
+        continue;
+      }
+      const sourceTitle = rootTitles[sourcePath] || rootTitles[path.basename(sourcePath)];
+      if (typeof sourceTitle === "string" && sourceTitle.trim()) {
+        titleWrites[destPath] = sourceTitle;
+      }
+      const sourceMeta = rootMeta[path.basename(sourcePath)] || rootMeta[sourcePath];
+      if (sourceMeta && typeof sourceMeta === "object") {
+        metaWrites[path.basename(destPath)] = sourceMeta;
+      }
+      copied++;
+      if (changed) converted++;
+    } catch (err) {
+      skipped++;
+      log?.(`[migrations] #26: skipped root legacy session ${sourcePath} (${err.message})`);
+    }
+  }
+  mergeJsonObjectFile(path.join(targetSessionDir, "session-titles.json"), titleWrites);
+  mergeJsonObjectFile(path.join(targetSessionDir, "session-meta.json"), metaWrites);
+
+  const activeSessionFiles = collectAgentConversationSessionJsonlPaths(agentsDir);
+  for (const { sessionPath, agentId } of activeSessionFiles) {
+    if (looksLikePiSessionJsonlSync(sessionPath)) continue;
+    try {
+      const backupPath = `${sessionPath}.legacy-no-header.bak`;
+      if (!fs.existsSync(backupPath)) fs.copyFileSync(sessionPath, backupPath);
+      const changed = ensurePiSessionJsonlHeader(sessionPath, {
+        sourcePath: sessionPath,
+        fallbackModelRef: readAgentChatModelRef(agentsDir, agentId),
+      });
+      if (changed) converted++;
+    } catch (err) {
+      skipped++;
+      log?.(`[migrations] #26: skipped legacy-format session ${sessionPath} (${err.message})`);
+    }
+  }
+
+  log?.(`[migrations] #26: legacy sessions migrated (copied=${copied}, converted=${converted}, skipped=${skipped})`);
+}
+
+function resolveLegacySessionTargetAgentId({ agentsDir, prefs }) {
+  const preferences = prefs?.getPreferences?.() || {};
+  const preferred = preferences.primaryAgent || "hanako";
+  if (hasAgentConfig(agentsDir, preferred)) return preferred;
+  if (hasAgentConfig(agentsDir, "hanako")) return "hanako";
+
+  let dirs = [];
+  try {
+    dirs = fs.readdirSync(agentsDir, { withFileTypes: true });
+  } catch {
+    return null;
+  }
+  const first = dirs.find((entry) => entry.isDirectory() && hasAgentConfig(agentsDir, entry.name));
+  return first?.name || null;
+}
+
+function hasAgentConfig(agentsDir, agentId) {
+  return !!agentId && fs.existsSync(path.join(agentsDir, agentId, "config.yaml"));
+}
+
+function listDirectJsonlFiles(dir) {
+  let entries = [];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".jsonl"))
+    .map((entry) => path.join(dir, entry.name));
+}
+
+function collectAgentConversationSessionJsonlPaths(agentsDir) {
+  let agents = [];
+  try {
+    agents = fs.readdirSync(agentsDir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const out = [];
+  for (const agent of agents) {
+    if (!agent.isDirectory()) continue;
+    const sessionDir = path.join(agentsDir, agent.name, "sessions");
+    for (const sessionPath of listDirectJsonlFiles(sessionDir)) {
+      out.push({ sessionPath, agentId: agent.name });
+    }
+    const archivedDir = path.join(sessionDir, "archived");
+    for (const sessionPath of listDirectJsonlFiles(archivedDir)) {
+      out.push({ sessionPath, agentId: agent.name });
+    }
+  }
+  return out;
+}
+
+function uniqueLegacySessionDestination(sessionDir, basename) {
+  const safeName = sanitizeLegacySessionFilename(basename);
+  const candidate = path.join(sessionDir, safeName);
+  if (!fs.existsSync(candidate)) return candidate;
+
+  const ext = path.extname(safeName) || ".jsonl";
+  const stem = path.basename(safeName, ext);
+  let i = 1;
+  while (true) {
+    const next = path.join(sessionDir, `${stem}-legacy-${i}${ext}`);
+    if (!fs.existsSync(next)) return next;
+    i++;
+  }
+}
+
+function sanitizeLegacySessionFilename(filename) {
+  const raw = path.basename(String(filename || "legacy-session.jsonl"));
+  const cleaned = raw
+    .replace(/[<>:"/\\|?*\x00-\x1f]/g, "_")
+    .replace(/^\.+/, "")
+    || "legacy-session.jsonl";
+  return cleaned.endsWith(".jsonl") ? cleaned : `${cleaned}.jsonl`;
+}
+
+function looksLikePiSessionJsonlSync(filePath) {
+  try {
+    const first = firstJsonLineSync(filePath);
+    return first?.type === "session" && typeof first.id === "string";
+  } catch {
+    return false;
+  }
+}
+
+function ensurePiSessionJsonlHeader(filePath, { sourcePath, fallbackModelRef } = {}) {
+  const raw = fs.readFileSync(filePath, "utf-8");
+  const lines = raw.split(/\r?\n/).filter((line) => line.trim());
+  if (!lines.length) return false;
+
+  let first;
+  try {
+    first = JSON.parse(lines[0]);
+  } catch {
+    return false;
+  }
+  if (first?.type === "session" && typeof first.id === "string") return false;
+
+  const stat = fs.statSync(filePath);
+  const timestamp = inferLegacySessionTimestamp(lines, stat);
+  const cwd = inferLegacySessionCwd(lines) || process.cwd();
+  const sessionId = stableLegacySessionId(sourcePath || filePath, timestamp);
+  const normalized = [];
+  let parentId = null;
+
+  normalized.push(JSON.stringify({
+    type: "session",
+    version: 3,
+    id: sessionId,
+    timestamp,
+    cwd,
+  }));
+
+  const modelEntry = inferLegacySessionModelEntry(lines, timestamp, sessionId, fallbackModelRef);
+  if (modelEntry) {
+    parentId = modelEntry.id;
+    normalized.push(JSON.stringify(modelEntry));
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    let entry;
+    try {
+      entry = JSON.parse(lines[i]);
+    } catch {
+      normalized.push(lines[i]);
+      continue;
+    }
+    if (!entry || typeof entry !== "object") {
+      normalized.push(lines[i]);
+      continue;
+    }
+
+    let next = { ...entry };
+    if (!next.type && !next.message && typeof next.role === "string") {
+      next = { type: "message", message: { ...entry } };
+    }
+    if (!next.id) next.id = stableEntryId(sessionId, i, lines[i]);
+    if (next.type !== "session" && next.parentId == null) next.parentId = parentId;
+    if (!next.timestamp) next.timestamp = next.message?.timestamp
+      ? timestampFromMaybeMs(next.message.timestamp, timestamp)
+      : timestamp;
+    if (next.type === "message" && next.message && !next.message.timestamp) {
+      const parsedTs = Date.parse(next.timestamp);
+      next.message = {
+        ...next.message,
+        timestamp: Number.isNaN(parsedTs) ? Date.parse(timestamp) : parsedTs,
+      };
+    }
+    normalized.push(JSON.stringify(next));
+    parentId = next.id || parentId;
+  }
+
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, normalized.join("\n") + "\n", "utf-8");
+  fs.renameSync(tmp, filePath);
+  return true;
+}
+
+function firstJsonLineSync(filePath) {
+  const raw = fs.readFileSync(filePath, "utf-8");
+  const line = raw.split(/\r?\n/).find((item) => item.trim());
+  return line ? JSON.parse(line) : null;
+}
+
+function inferLegacySessionTimestamp(lines, stat) {
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      const candidate = entry?.timestamp || entry?.message?.timestamp || entry?.createdAt;
+      const ts = timestampFromMaybeMs(candidate, null);
+      if (ts) return ts;
+    } catch {}
+  }
+  return stat.mtime instanceof Date && !Number.isNaN(stat.mtime.getTime())
+    ? stat.mtime.toISOString()
+    : new Date().toISOString();
+}
+
+function timestampFromMaybeMs(value, fallback) {
+  if (typeof value === "string" && !Number.isNaN(Date.parse(value))) return new Date(value).toISOString();
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) return date.toISOString();
+  }
+  return fallback;
+}
+
+function inferLegacySessionCwd(lines) {
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      const cwd = entry?.cwd || entry?.message?.cwd;
+      if (typeof cwd === "string" && cwd.trim()) return cwd;
+    } catch {}
+  }
+  return null;
+}
+
+function inferLegacySessionModelEntry(lines, timestamp, sessionId, fallbackModelRef = null) {
+  for (const line of lines) {
+    try {
+      const entry = JSON.parse(line);
+      const message = entry?.message || entry;
+      const provider = message?.provider || entry?.provider || null;
+      const modelId = message?.model || message?.modelId || entry?.model || entry?.modelId || null;
+      if (typeof provider === "string" && provider && typeof modelId === "string" && modelId) {
+        return {
+          type: "model_change",
+          id: stableEntryId(sessionId, "model", `${provider}/${modelId}`),
+          parentId: null,
+          timestamp,
+          provider,
+          modelId,
+        };
+      }
+    } catch {}
+  }
+  if (fallbackModelRef?.provider && fallbackModelRef?.id) {
+    return {
+      type: "model_change",
+      id: stableEntryId(sessionId, "model", `${fallbackModelRef.provider}/${fallbackModelRef.id}`),
+      parentId: null,
+      timestamp,
+      provider: fallbackModelRef.provider,
+      modelId: fallbackModelRef.id,
+    };
+  }
+  return null;
+}
+
+function readAgentChatModelRef(agentsDir, agentId) {
+  const cfg = safeReadYAMLSync(path.join(agentsDir, agentId, "config.yaml"), null, YAML);
+  const ref = cfg?.models?.chat;
+  if (ref && typeof ref === "object" && typeof ref.id === "string" && typeof ref.provider === "string") {
+    return { id: ref.id, provider: ref.provider };
+  }
+  if (typeof ref === "string" && ref.includes("/")) {
+    const idx = ref.indexOf("/");
+    const provider = ref.slice(0, idx);
+    const id = ref.slice(idx + 1);
+    if (provider && id) return { id, provider };
+  }
+  return null;
+}
+
+function readJsonObject(filePath) {
+  try {
+    const parsed = JSON.parse(fs.readFileSync(filePath, "utf-8"));
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function mergeJsonObjectFile(filePath, patch) {
+  if (!patch || Object.keys(patch).length === 0) return;
+  const current = readJsonObject(filePath);
+  const next = { ...current, ...patch };
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  const tmp = `${filePath}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + "\n", "utf-8");
+  fs.renameSync(tmp, filePath);
+}
+
+function stableLegacySessionId(sourcePath, timestamp) {
+  return createHash("sha256")
+    .update(`${sourcePath}\n${timestamp}`)
+    .digest("hex")
+    .slice(0, 26);
+}
+
+function stableEntryId(sessionId, index, seed) {
+  return createHash("sha256")
+    .update(`${sessionId}\n${index}\n${seed}`)
+    .digest("hex")
+    .slice(0, 8);
 }
 
 function removeFrontmatterKeys(raw, keys) {

@@ -45,6 +45,7 @@ function createSkillWatchIgnore(rootDir) {
 // `<root>/<skill-name>/references/...`，3 层足够覆盖；更深的目录树（典型是
 // 误打入的 node_modules 或源码 vendor 目录）不该被监控。
 const SKILL_WATCH_DEPTH = 3;
+const SKILL_AUTHORING_SKILL_NAMES = new Set(["skill-creator", "hana-plugin-creator"]);
 
 // 内部测试用：暴露 ignore/depth 工厂，方便 unit test 验证规则行为。
 export const __test = { createSkillWatchIgnore, HEAVY_DIR_NAMES, SKILL_WATCH_DEPTH };
@@ -76,7 +77,7 @@ export class SkillManager {
    * @param {string} opts.skillsDir - 全局 skills 目录
    * @param {Array<{ dirPath: string, label: string }>} [opts.externalPaths] - 外部兼容技能目录
    */
-  constructor({ skillsDir, externalPaths = [] }) {
+  constructor({ skillsDir, externalPaths = [], getLearnSkills = null }) {
     this.skillsDir = skillsDir;
     this._allSkills = [];
     this._hiddenSkills = new Set();
@@ -85,6 +86,7 @@ export class SkillManager {
     this._reloadDeps = null; // { resourceLoader, agents, onReloaded }
     this._externalPaths = externalPaths;
     this._externalWatchers = new Map();
+    this._getLearnSkills = typeof getLearnSkills === "function" ? getLearnSkills : () => ({ enabled: true });
   }
 
   /** 全量 skill 列表 */
@@ -373,11 +375,25 @@ export class SkillManager {
   }
 
   _isRuntimeEnabledForAgent(skill, enabledSet) {
+    if (this._isSkillAuthoringSkill(skill) && !this._isLearnSkillsEnabled()) {
+      return false;
+    }
     return !!(
       skill?._pluginSkill
       || skill?._workspaceSkill
       || enabledSet?.has(skill.name)
     );
+  }
+
+  _isSkillAuthoringSkill(skill) {
+    return SKILL_AUTHORING_SKILL_NAMES.has(skill?.name);
+  }
+
+  _isLearnSkillsEnabled() {
+    const cfg = this._getLearnSkills?.();
+    if (cfg === false) return false;
+    if (cfg === true || cfg == null) return true;
+    return cfg.enabled !== false;
   }
 
   // ── 自学技能扫描 ──

@@ -37,12 +37,25 @@ const {
   withHanaPiSdkEnv,
 } = require("../shared/hana-runtime-paths.cjs");
 const {
+  normalizeForCompare,
+  promptAndImportOfficialHanakoData,
+} = require("./src/shared/hanakopro-import.cjs");
+const {
   buildBrowserSearchExtractionScript,
   buildBrowserSearchLoadOptions,
   buildBrowserSearchUrl,
 } = require("../lib/browser/browser-search-extractors.cjs");
+const {
+  VALID_MOODS,
+  normalizeDesktopPetState,
+  mergeDesktopPetState,
+  resolveDesktopPetBounds,
+  mapDesktopPetEventToState,
+  durableDesktopPetState,
+} = require("./src/shared/desktop-pet-state.cjs");
 
-const APP_USER_MODEL_ID = "com.hanako.app"; // Keep in sync with package.json build.appId.
+const APP_USER_MODEL_ID = "com.hanakopro.app"; // Keep in sync with package.json build.appId.
+app.setName("HanakoPro");
 
 // preload 缺失时 Electron 会静默忽略，renderer 拿不到 window.hana →
 // onboarding/主窗口白屏且无前端报错。此处硬崩，拒绝以不可用状态启动。
@@ -50,7 +63,7 @@ const APP_USER_MODEL_ID = "com.hanako.app"; // Keep in sync with package.json bu
   const preloadPath = path.join(__dirname, "preload.bundle.cjs");
   if (!fs.existsSync(preloadPath)) {
     const msg = `Missing preload bundle:\n${preloadPath}\n\nBuild is incomplete. Run 'npm run build:preload' or rebuild the installer.`;
-    try { dialog.showErrorBox("Hanako failed to start", msg); } catch {}
+    try { dialog.showErrorBox("HanakoPro failed to start", msg); } catch {}
     console.error("[desktop] " + redactLogText(msg));
     process.exit(1);
   }
@@ -100,12 +113,31 @@ function redactMainLogText(value) {
 // 按 HANA_HOME 隔离 Electron userData（localStorage / cache / session）
 // 生产: ~/Library/Application Support/Hanako
 // 开发: ~/Library/Application Support/Hanako-dev
-const defaultHome = path.join(os.homedir(), ".hanako");
+const defaultHome = path.join(os.homedir(), ".hanakopro");
 configureClientSingleInstance(app, {
   hanakoHome,
   defaultHome,
   onSecondInstance: () => showPrimaryWindow(),
 });
+
+async function maybeImportOfficialHanakoData() {
+  if (normalizeForCompare(hanakoHome) !== normalizeForCompare(defaultHome)) return;
+  const sourceHome = path.join(os.homedir(), ".hanako");
+  try {
+    const result = await promptAndImportOfficialHanakoData({
+      dialog,
+      sourceHome,
+      targetHome: hanakoHome,
+      log: (line) => console.log(`[desktop] ${line}`),
+    });
+    if (result.imported) {
+      ensureHanaPiSdkDirs(hanakoHome);
+      configureProcessPiSdkEnv(hanakoHome);
+    }
+  } catch (err) {
+    console.error("[desktop] HanakoPro import failed:", redactMainLogText(err?.message || String(err)));
+  }
+}
 
 if (process.platform === "win32") {
   app.setAppUserModelId(APP_USER_MODEL_ID);
@@ -114,6 +146,7 @@ if (process.platform === "win32") {
 let splashWindow = null;
 let mainWindow = null;
 let onboardingWindow = null;
+let desktopPetWindow = null;
 
 let settingsWindow = null;
 
@@ -168,6 +201,16 @@ let _startHiddenAtLogin = false; // 登录项启动时不抢前台，只在托�
 const SERVER_SHUTDOWN_GRACE_MS = 17000; // server gracefulShutdown 内部 15s force timer + 余量
 const SERVER_FORCE_KILL_WAIT_MS = 5000;
 const SERVER_SHUTDOWN_POLL_MS = 200;
+const DESKTOP_PET_IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".gif"]);
+const desktopPetStatePath = path.join(hanakoHome, "user", "desktop-pet-state.json");
+const desktopPetCustomAssetsDir = path.join(hanakoHome, "user", "desktop-pet-assets");
+let _desktopPetState = normalizeDesktopPetState(loadDesktopPetState());
+let _desktopPetPersistTimer = null;
+let _desktopPetSuppressedByAppFocus = false;
+let _desktopPetFocusTimer = null;
+let _desktopPetChatWs = null;
+let _desktopPetChatWsPromise = null;
+let _desktopPetChatReconnectTimer = null;
 
 // ── 主进程 i18n ──
 // 从 agent config.yaml 读取 locale，加载对应语言包的 "main" 部分
@@ -788,6 +831,376 @@ function showPrimaryWindow() {
   }
 }
 
+function loadDesktopPetState() {
+  try { return JSON.parse(fs.readFileSync(desktopPetStatePath, "utf-8")); }
+  catch { return null; }
+}
+
+function persistDesktopPetState() {
+  if (_desktopPetPersistTimer) clearTimeout(_desktopPetPersistTimer);
+  _desktopPetPersistTimer = setTimeout(() => {
+    _desktopPetPersistTimer = null;
+    try {
+      fs.mkdirSync(path.dirname(desktopPetStatePath), { recursive: true });
+      fs.writeFileSync(desktopPetStatePath, JSON.stringify(durableDesktopPetState(_desktopPetState), null, 2) + "\n", "utf-8");
+    } catch (err) {
+      console.error("[desktop] 保存桌宠状态失败:", redactMainLogText(err?.message || String(err)));
+    }
+  }, 300);
+}
+
+function getDesktopPetWorkAreas() {
+  const displays = screen.getAllDisplays();
+  return displays.map((display) => display.workArea || display.bounds);
+}
+
+function sendDesktopPetState(patch) {
+  if (desktopPetWindow && !desktopPetWindow.isDestroyed()) {
+    desktopPetWindow.webContents.send("desktop-pet-state", patch || _desktopPetState);
+  }
+}
+
+function isDesktopPetBrowserWindow(win) {
+  return !!win && desktopPetWindow && !desktopPetWindow.isDestroyed() && win.id === desktopPetWindow.id;
+}
+
+function hasFocusedHanakoWindow() {
+  const focused = BrowserWindow.getFocusedWindow();
+  return !!focused && !focused.isDestroyed() && !isDesktopPetBrowserWindow(focused);
+}
+
+function refreshDesktopPetForegroundVisibility() {
+  const nextSuppressed = _desktopPetState.backgroundOnly && hasFocusedHanakoWindow();
+  if (_desktopPetSuppressedByAppFocus === nextSuppressed) return;
+  _desktopPetSuppressedByAppFocus = nextSuppressed;
+  applyDesktopPetWindowState();
+}
+
+function scheduleDesktopPetForegroundVisibilityRefresh() {
+  if (_desktopPetFocusTimer) clearTimeout(_desktopPetFocusTimer);
+  _desktopPetFocusTimer = setTimeout(() => {
+    _desktopPetFocusTimer = null;
+    refreshDesktopPetForegroundVisibility();
+  }, 120);
+}
+
+function bindDesktopPetForegroundEvents(win) {
+  if (!win) return;
+  win.on("focus", scheduleDesktopPetForegroundVisibilityRefresh);
+  win.on("blur", scheduleDesktopPetForegroundVisibilityRefresh);
+  win.on("show", scheduleDesktopPetForegroundVisibilityRefresh);
+  win.on("hide", scheduleDesktopPetForegroundVisibilityRefresh);
+}
+
+function applyDesktopPetWindowState() {
+  if (!desktopPetWindow || desktopPetWindow.isDestroyed()) return;
+  desktopPetWindow.setAlwaysOnTop(true, "floating");
+  desktopPetWindow.setIgnoreMouseEvents(_desktopPetState.clickThrough, { forward: true });
+  if (_desktopPetState.visible && _desktopPetState.enabled) {
+    desktopPetWindow.showInactive();
+  } else {
+    desktopPetWindow.hide();
+  }
+}
+
+function updateDesktopPetState(patch, { persist = true, broadcast = true, updateTray = true } = {}) {
+  const cleanPatch = {};
+  for (const [key, value] of Object.entries(patch || {})) {
+    if (value !== undefined) cleanPatch[key] = value;
+  }
+  cleanPatch.backgroundOnly = false;
+  cleanPatch.alwaysOnTop = true;
+  _desktopPetState = mergeDesktopPetState(_desktopPetState, cleanPatch);
+  if (Object.prototype.hasOwnProperty.call(cleanPatch, "backgroundOnly")) {
+    _desktopPetSuppressedByAppFocus = _desktopPetState.backgroundOnly && hasFocusedHanakoWindow();
+  }
+  if (_desktopPetState.enabled && _desktopPetState.visible && (!desktopPetWindow || desktopPetWindow.isDestroyed())) {
+    createDesktopPetWindow();
+  }
+  applyDesktopPetWindowState();
+  if (persist) persistDesktopPetState();
+  if (broadcast) sendDesktopPetState(_desktopPetState);
+  if (updateTray && tray && !tray.isDestroyed()) tray.setContextMenu(buildTrayMenu());
+  return _desktopPetState;
+}
+
+function assertDesktopPetMood(mood) {
+  const value = typeof mood === "string" ? mood : "";
+  if (!VALID_MOODS.has(value)) throw new Error("无效的桌宠状态");
+  return value;
+}
+
+function removeDesktopPetCustomImageFiles(mood, keepPath = null) {
+  try {
+    if (!fs.existsSync(desktopPetCustomAssetsDir)) return;
+    const prefix = `${mood}-`;
+    const normalizedKeepPath = keepPath ? path.normalize(keepPath) : null;
+    for (const name of fs.readdirSync(desktopPetCustomAssetsDir)) {
+      const ext = path.extname(name).toLowerCase();
+      if (DESKTOP_PET_IMAGE_EXTENSIONS.has(ext) && (name.startsWith(prefix) || name === `${mood}${ext}`)) {
+        const target = path.join(desktopPetCustomAssetsDir, name);
+        if (normalizedKeepPath && path.normalize(target) === normalizedKeepPath) continue;
+        try { fs.unlinkSync(target); } catch {}
+      }
+    }
+  } catch {}
+}
+
+async function selectDesktopPetCustomImage(event, mood) {
+  const petMood = assertDesktopPetMood(mood);
+  const win = BrowserWindow.fromWebContents(event.sender) || settingsWindow || mainWindow;
+  if (!win) return null;
+  const result = await dialog.showOpenDialog(win, {
+    properties: ["openFile"],
+    title: "选择桌宠图片",
+    filters: [
+      { name: "Images", extensions: ["png", "jpg", "jpeg", "webp", "gif"] },
+    ],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  const source = result.filePaths[0];
+  const ext = path.extname(source).toLowerCase();
+  if (!DESKTOP_PET_IMAGE_EXTENSIONS.has(ext)) throw new Error("请选择图片文件");
+  fs.mkdirSync(desktopPetCustomAssetsDir, { recursive: true });
+  const target = path.join(desktopPetCustomAssetsDir, `${petMood}-${Date.now()}${ext}`);
+  fs.copyFileSync(source, target);
+  removeDesktopPetCustomImageFiles(petMood, target);
+  return updateDesktopPetState({
+    customImages: {
+      ...(_desktopPetState.customImages || {}),
+      [petMood]: target,
+    },
+  });
+}
+
+function resetDesktopPetCustomImage(_event, mood) {
+  const petMood = assertDesktopPetMood(mood);
+  removeDesktopPetCustomImageFiles(petMood);
+  const customImages = { ...(_desktopPetState.customImages || {}) };
+  delete customImages[petMood];
+  return updateDesktopPetState({ customImages });
+}
+
+async function desktopPetServerJson(pathname, options = {}) {
+  if (!serverPort) throw new Error("本地服务未就绪");
+  const headers = {
+    ...(options.headers || {}),
+    ...(serverToken ? { Authorization: `Bearer ${serverToken}` } : {}),
+  };
+  const res = await fetch(`http://127.0.0.1:${serverPort}${pathname}`, {
+    ...options,
+    headers,
+    signal: AbortSignal.timeout(8000),
+  });
+  if (!res.ok) throw new Error(`本地服务请求失败：${res.status}`);
+  return await res.json();
+}
+
+async function resolveDesktopPetChatSession() {
+  try {
+    const sessions = await desktopPetServerJson("/api/sessions");
+    const first = Array.isArray(sessions)
+      ? sessions.find(session => typeof session?.path === "string" && session.path)
+      : null;
+    if (first) return { path: first.path };
+    const created = await desktopPetServerJson("/api/sessions/new", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ memoryEnabled: true }),
+    });
+    return typeof created?.path === "string" && created.path ? { path: created.path } : null;
+  } catch (err) {
+    const message = err?.message || "桌宠会话准备失败";
+    if (/fetch|ECONN|timeout|aborted/i.test(message)) {
+      throw new Error("连接本地服务失败，请稍后再试");
+    }
+    throw new Error(message);
+  }
+}
+
+function desktopPetChatWsUrl() {
+  if (!serverPort) throw new Error("本地服务未就绪");
+  const token = serverToken ? `?token=${encodeURIComponent(serverToken)}` : "";
+  return `ws://127.0.0.1:${serverPort}/ws${token}`;
+}
+
+function parseDesktopPetWsMessage(data) {
+  try {
+    const text = typeof data === "string" ? data : data?.toString?.() ?? String(data);
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
+function closeDesktopPetChatWs() {
+  if (_desktopPetChatReconnectTimer) {
+    clearTimeout(_desktopPetChatReconnectTimer);
+    _desktopPetChatReconnectTimer = null;
+  }
+  if (!_desktopPetChatWs) return;
+  const ws = _desktopPetChatWs;
+  _desktopPetChatWs = null;
+  _desktopPetChatWsPromise = null;
+  try { ws.close(); } catch {}
+}
+
+function relayDesktopPetChatEvent(message) {
+  if (!desktopPetWindow || desktopPetWindow.isDestroyed()) return;
+  try { desktopPetWindow.webContents.send("desktop-pet-chat-event", message); } catch {}
+}
+
+function scheduleDesktopPetChatReconnect() {
+  if (isQuitting || _isUpdating || forceQuitApp) return;
+  if (!desktopPetWindow || desktopPetWindow.isDestroyed()) return;
+  if (_desktopPetChatReconnectTimer) return;
+  _desktopPetChatReconnectTimer = setTimeout(() => {
+    _desktopPetChatReconnectTimer = null;
+    ensureDesktopPetChatWs().catch(() => {});
+  }, 2000);
+}
+
+async function ensureDesktopPetChatWs() {
+  if (_desktopPetChatWs && _desktopPetChatWs.readyState === 1) return _desktopPetChatWs;
+  if (_desktopPetChatWsPromise) return await _desktopPetChatWsPromise;
+  const WebSocket = require("ws");
+  _desktopPetChatWsPromise = new Promise((resolve, reject) => {
+    let opened = false;
+    const ws = new WebSocket(desktopPetChatWsUrl());
+    _desktopPetChatWs = ws;
+    const timer = setTimeout(() => {
+      if (!opened) {
+        if (_desktopPetChatWs === ws) _desktopPetChatWs = null;
+        _desktopPetChatWsPromise = null;
+        try { ws.close(); } catch {}
+        reject(new Error("连接超时"));
+      }
+    }, 8000);
+
+    ws.on("open", () => {
+      opened = true;
+      clearTimeout(timer);
+      _desktopPetChatWsPromise = null;
+      resolve(ws);
+    });
+
+    ws.on("message", (data) => {
+      const message = parseDesktopPetWsMessage(data);
+      if (!message) return;
+      relayDesktopPetChatEvent(message);
+    });
+
+    ws.on("error", () => {
+      clearTimeout(timer);
+      if (!opened) {
+        if (_desktopPetChatWs === ws) _desktopPetChatWs = null;
+        _desktopPetChatWsPromise = null;
+        reject(new Error("连接失败"));
+        return;
+      }
+      relayDesktopPetChatEvent({ type: "error", message: "连接失败" });
+    });
+
+    ws.on("close", () => {
+      clearTimeout(timer);
+      if (_desktopPetChatWs === ws) _desktopPetChatWs = null;
+      _desktopPetChatWsPromise = null;
+      scheduleDesktopPetChatReconnect();
+    });
+  });
+  return await _desktopPetChatWsPromise;
+}
+
+async function sendDesktopPetPrompt(_event, text) {
+  const promptText = typeof text === "string" ? text.trim() : "";
+  if (!promptText) throw new Error("请输入问题");
+  const ws = await ensureDesktopPetChatWs();
+  if (!ws || ws.readyState !== 1) throw new Error("连接失败");
+  const session = await resolveDesktopPetChatSession();
+  if (!session?.path) throw new Error("会话还没准备好，请稍后再试");
+  ws.send(JSON.stringify({
+    type: "prompt",
+    text: promptText,
+    sessionPath: session.path,
+    uiContext: null,
+    displayMessage: { text: promptText },
+  }));
+  return { ok: true, sessionPath: session.path };
+}
+function saveDesktopPetBounds() {
+  if (!desktopPetWindow || desktopPetWindow.isDestroyed()) return;
+  const bounds = desktopPetWindow.getBounds();
+  updateDesktopPetState({ x: bounds.x, y: bounds.y, width: bounds.width, height: bounds.height }, { broadcast: false, updateTray: false });
+}
+
+function createDesktopPetWindow() {
+  if (!_desktopPetState.enabled) return null;
+  if (desktopPetWindow && !desktopPetWindow.isDestroyed()) {
+    refreshDesktopPetForegroundVisibility();
+    applyDesktopPetWindowState();
+    return desktopPetWindow;
+  }
+  const workAreas = getDesktopPetWorkAreas();
+  const bounds = resolveDesktopPetBounds(_desktopPetState, workAreas, screen.getPrimaryDisplay().workArea);
+  _desktopPetState = mergeDesktopPetState(_desktopPetState, bounds);
+  _desktopPetState = mergeDesktopPetState(_desktopPetState, { backgroundOnly: false, alwaysOnTop: true });
+  desktopPetWindow = new BrowserWindow({
+    x: bounds.x,
+    y: bounds.y,
+    width: bounds.width,
+    height: bounds.height,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    skipTaskbar: true,
+    alwaysOnTop: _desktopPetState.alwaysOnTop,
+    hasShadow: false,
+    backgroundColor: "#00000000",
+    show: false,
+    acceptFirstMouse: true,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.bundle.cjs"),
+      contextIsolation: true,
+      nodeIntegration: false,
+    },
+  });
+  try { desktopPetWindow.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: false }); } catch {}
+  _desktopPetSuppressedByAppFocus = _desktopPetState.backgroundOnly && hasFocusedHanakoWindow();
+  applyDesktopPetWindowState();
+  loadWindowURL(desktopPetWindow, "desktop-pet");
+  desktopPetWindow.webContents.once("did-finish-load", () => {
+    sendDesktopPetState(_desktopPetState);
+    ensureDesktopPetChatWs().catch(() => {});
+  });
+  desktopPetWindow.on("move", saveDesktopPetBounds);
+  desktopPetWindow.on("close", (event) => {
+    if (!isQuitting && !_isUpdating && !forceQuitApp) {
+      event.preventDefault();
+      updateDesktopPetState({ visible: false });
+    }
+  });
+  desktopPetWindow.on("closed", () => {
+    desktopPetWindow = null;
+    closeDesktopPetChatWs();
+    scheduleDesktopPetForegroundVisibilityRefresh();
+  });
+  return desktopPetWindow;
+}
+
+function buildTrayMenu() {
+  const petEnabled = _desktopPetState.enabled && _desktopPetState.visible;
+  return Menu.buildFromTemplate([
+    { label: mt("tray.show", null, "Show Hanako"), click: () => showPrimaryWindow() },
+    {
+      label: petEnabled ? mt("tray.hidePet", null, "Disable Desktop Pet") : mt("tray.showPet", null, "Enable Desktop Pet"),
+      click: () => updateDesktopPetState({ enabled: true, visible: !petEnabled }),
+    },
+    { label: mt("tray.settings", null, "Settings"), click: () => createSettingsWindow() },
+    { type: "separator" },
+    { label: mt("tray.quit", null, "Quit"), click: () => { isExitingServer = true; isQuitting = true; app.quit(); } },
+  ]);
+}
+
 /**
  * 创建系统托盘图标
  * - 双击：显示主窗口
@@ -815,15 +1228,8 @@ function createTray() {
   tray = new Tray(icon);
   tray.setToolTip(isDev ? "Hanako (dev)" : "Hanako");
 
-  const buildMenu = () => Menu.buildFromTemplate([
-    { label: mt("tray.show", null, "Show Hanako"), click: () => showPrimaryWindow() },
-    { label: mt("tray.settings", null, "Settings"), click: () => createSettingsWindow() },
-    { type: "separator" },
-    { label: mt("tray.quit", null, "Quit"), click: () => { isExitingServer = true; isQuitting = true; app.quit(); } },
-  ]);
-
-  tray.setContextMenu(buildMenu());
-  tray.on("right-click", () => tray.setContextMenu(buildMenu()));
+  tray.setContextMenu(buildTrayMenu());
+  tray.on("right-click", () => tray.setContextMenu(buildTrayMenu()));
   tray.on("double-click", () => showPrimaryWindow());
 }
 
@@ -999,6 +1405,7 @@ function createMainWindow() {
   }
 
   mainWindow = new BrowserWindow(opts);
+  bindDesktopPetForegroundEvents(mainWindow);
   applyWindowThemeColors(mainWindow, initialTheme);
 
   // auto-updater 是进程级服务：初始化只做一次，窗口重建时只更新目标 window 引用。
@@ -2521,6 +2928,17 @@ wrapIpcHandler("check-update", () => {
 });
 wrapIpcHandler("get-auto-launch-status", () => getAutoLaunchStatus({ app }));
 wrapIpcHandler("set-auto-launch-enabled", (_event, enabled) => setAutoLaunchEnabled({ app, enabled: enabled === true }));
+wrapIpcHandler("desktop-pet-get-state", () => _desktopPetState);
+wrapIpcHandler("desktop-pet-set-state", (_event, patch) => updateDesktopPetState(patch || {}));
+wrapIpcHandler("desktop-pet-select-custom-image", (event, mood) => selectDesktopPetCustomImage(event, mood));
+wrapIpcHandler("desktop-pet-reset-custom-image", (event, mood) => resetDesktopPetCustomImage(event, mood));
+wrapIpcHandler("desktop-pet-get-chat-session", () => resolveDesktopPetChatSession());
+wrapIpcHandler("desktop-pet-send-prompt", (event, text) => sendDesktopPetPrompt(event, text));
+wrapIpcBestEffortHandler("desktop-pet-open-main", () => showPrimaryWindow());
+wrapIpcOn("desktop-pet-forward-event", (_event, event) => {
+  const patch = mapDesktopPetEventToState(event);
+  if (patch) updateDesktopPetState(patch, { persist: false });
+});
 
 wrapIpcBestEffortHandler("open-settings", (_event, tab, theme) => createSettingsWindow(tab, theme));
 
@@ -2629,15 +3047,8 @@ wrapIpcOn("settings-changed", (_event, type, data) => {
   }
   if (type === "locale-changed") {
     resetMainI18n();
-    // 重建托盘菜单，使标签跟随新 locale
     if (tray && !tray.isDestroyed()) {
-      const buildMenu = () => Menu.buildFromTemplate([
-        { label: mt("tray.show", null, "Show Hanako"), click: () => showPrimaryWindow() },
-        { label: mt("tray.settings", null, "Settings"), click: () => createSettingsWindow() },
-        { type: "separator" },
-        { label: mt("tray.quit", null, "Quit"), click: () => { isExitingServer = true; isQuitting = true; app.quit(); } },
-      ]);
-      tray.setContextMenu(buildMenu());
+      tray.setContextMenu(buildTrayMenu());
     }
   }
 });
@@ -3183,8 +3594,25 @@ wrapIpcBestEffortHandler("app-ready", () => {
 });
 
 // ── App 生命周期 ──
+app.on("browser-window-focus", (_event, win) => {
+  if (!isDesktopPetBrowserWindow(win)) scheduleDesktopPetForegroundVisibilityRefresh();
+});
+
+app.on("browser-window-blur", (_event, win) => {
+  if (!isDesktopPetBrowserWindow(win)) scheduleDesktopPetForegroundVisibilityRefresh();
+});
+
+app.on("browser-window-show", (_event, win) => {
+  if (!isDesktopPetBrowserWindow(win)) scheduleDesktopPetForegroundVisibilityRefresh();
+});
+
+app.on("browser-window-hide", (_event, win) => {
+  if (!isDesktopPetBrowserWindow(win)) scheduleDesktopPetForegroundVisibilityRefresh();
+});
+
 app.whenReady().then(async () => {
   try {
+    await maybeImportOfficialHanakoData();
     migrateSetupComplete();
     _startHiddenAtLogin = getAutoLaunchStatus({ app }).openedAtLogin === true && isSetupComplete();
 
@@ -3202,6 +3630,7 @@ app.whenReady().then(async () => {
     monitorServer();
     setupBrowserCommands();
     createTray();
+    if (_desktopPetState.enabled && _desktopPetState.visible) createDesktopPetWindow();
     if (_startHiddenAtLogin && process.platform === "darwin") {
       app.dock.hide();
     }

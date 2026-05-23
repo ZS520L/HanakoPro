@@ -9,7 +9,7 @@ import { join } from "node:path";
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
-process.env.HANA_HOME = join(homedir(), ".hanako-dev");
+if (!process.env.HANA_HOME) process.env.HANA_HOME = join(homedir(), ".hanakopro-dev");
 // 本地 Electron 再拉起 server 时，显式把当前 Node runtime 传下去。
 // 这样开发模式的 server/source 进程就不会误用 Electron 自带 Node，避免 native addon ABI 漂移。
 process.env.HANA_DEV_NODE_BIN = process.execPath;

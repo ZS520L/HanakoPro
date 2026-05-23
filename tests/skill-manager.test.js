@@ -165,6 +165,31 @@ describe("SkillManager.getSkillsForAgent — baseline (unchanged)", () => {
     expect(names).toContain("plugin-x");
     expect(names).not.toContain("learned-b");
   });
+
+  it("excludes skill authoring skills when learn_skills is disabled", () => {
+    sm = new SkillManager({
+      skillsDir: "/tmp/hana-test-skills",
+      getLearnSkills: () => ({ enabled: false }),
+    });
+    sm._allSkills = [
+      makeSkill("global-skill"),
+      makeSkill("skill-creator"),
+      makeSkill("hana-plugin-creator"),
+      makeSkill("plugin-x", { _pluginSkill: true }),
+    ];
+
+    const result = sm.getSkillsForAgent(makeAgent("agent-a", [
+      "global-skill",
+      "skill-creator",
+      "hana-plugin-creator",
+      "plugin-x",
+    ]));
+    const names = result.skills.map(s => s.name);
+    expect(names).toContain("global-skill");
+    expect(names).toContain("plugin-x");
+    expect(names).not.toContain("skill-creator");
+    expect(names).not.toContain("hana-plugin-creator");
+  });
 });
 
 describe("SkillManager.computeDefaultEnabledForNewAgent", () => {

@@ -74,13 +74,15 @@ export function AutoUpdateStatus({ state, agentName = 'Hanako', onInstall }: Aut
       ? t('settings.about.updateDiskSpace')
       : state.error === 'running_from_dmg'
         ? t('settings.about.updateNeedInstall')
-        : t('settings.about.updateError');
+        : state.error === 'dev_update_check_unavailable'
+          ? t('settings.about.updateDevUnavailable')
+          : t('settings.about.updateError');
 
     return (
       <div className={styles.root}>
         <div className={styles.row}>
           <span className={`${styles.message} ${styles.error}`}>{message}</span>
-          {state.error && state.error !== 'disk_space_insufficient' && state.error !== 'running_from_dmg' && (
+          {state.error && state.error !== 'disk_space_insufficient' && state.error !== 'running_from_dmg' && state.error !== 'dev_update_check_unavailable' && (
             <span className={styles.errorDetail} title={state.error}>{state.error}</span>
           )}
         </div>

@@ -16,6 +16,7 @@ import {
   clearCompiledMemoryArtifacts,
   clearCompiledSummarySources,
 } from "../../lib/memory/compiled-memory-state.js";
+import { assemble } from "../../lib/memory/compile.js";
 import {
   ensureDefaultWorkspace,
   resolveDefaultWorkspacePath,
@@ -24,6 +25,7 @@ import { splitByScope, injectGlobalFields } from '../../shared/config-scope.js';
 import { mergeWorkspaceHistory, normalizeWorkspacePath } from "../../shared/workspace-history.js";
 import { resolveAgent, resolveAgentStrict, AgentNotFoundError } from "../utils/resolve-agent.js";
 import { formatSkillsForPrompt } from "../../lib/pi-sdk/index.js";
+import { getPromptRuntimeInjections } from "../../shared/prompt-composer.js";
 import {
   buildInlineProviderCredentialUpdate,
   clearInlineProviderCredentialFields,
@@ -36,6 +38,39 @@ function hasOwn(value, key) {
 
 function getGlobalValue(globalFields, key) {
   return globalFields.find((field) => field.key === key)?.value;
+}
+
+const COMPILED_MEMORY_SOURCES = [
+  { source: "facts", file: "facts.md", title: "重要事实", englishTitle: "Key facts" },
+  { source: "today", file: "today.md", title: "今天", englishTitle: "Today" },
+  { source: "week", file: "week.md", title: "本周早些时候", englishTitle: "Earlier this week" },
+  { source: "longterm", file: "longterm.md", title: "长期情况", englishTitle: "Long-term context" },
+];
+
+function splitMemoryItems(content) {
+  return String(content || "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .filter((line) => !/^#{1,6}\s+/.test(line))
+    .map((line) => line.replace(/^[-*+]\s+/, "").trim())
+    .filter((line) => line && line !== "（暂无）" && line !== "(none)" && line !== "（暂无记忆）" && line !== "(No memory yet)");
+}
+
+function serializeMemoryItems(items) {
+  return items.length ? items.map((item) => `- ${item}`).join("\n") + "\n" : "";
+}
+
+async function readTextIfExists(filePath) {
+  try {
+    return await fs.readFile(filePath, "utf-8");
+  } catch {
+    return "";
+  }
+}
+
+function getCompiledSourceMeta(source) {
+  return COMPILED_MEMORY_SOURCES.find((entry) => entry.source === source) || null;
 }
 
 function emitConfigAppEvents(engine, { globalFields, agentPartial, providersChanged }) {
@@ -221,7 +256,8 @@ export function createConfigRoute(engine) {
       const agent = resolveAgent(engine, c);
       let content = agent.systemPrompt || "";
       const enabledSkills = agent.enabledSkills || [];
-      if (enabledSkills.length > 0) {
+      const runtimeInjections = getPromptRuntimeInjections(agent.config?.promptComposer);
+      if (runtimeInjections.skills !== false && enabledSkills.length > 0) {
         content += formatSkillsForPrompt(enabledSkills);
       }
       return c.json({ content });
@@ -423,6 +459,58 @@ export function createConfigRoute(engine) {
     }
   });
 
+  route.get("/memories/visible", async (c) => {
+    let tempStore = null;
+    try {
+      const agent = resolveAgent(engine, c);
+      const { store, isTemp } = getStoreForAgent(agent.id);
+      if (isTemp) tempStore = store;
+      const memoryDir = path.dirname(agent.memoryMdPath);
+      const pinnedPath = path.join(agent.agentDir, "pinned.md");
+      const pinnedRaw = await readTextIfExists(pinnedPath);
+      const compiledRaw = await readTextIfExists(agent.memoryMdPath);
+      const runtimeInjections = getPromptRuntimeInjections(agent.config?.promptComposer);
+      const compiledSections = [];
+      for (const meta of COMPILED_MEMORY_SOURCES) {
+        const content = await readTextIfExists(path.join(memoryDir, meta.file));
+        compiledSections.push({
+          source: meta.source,
+          title: meta.title,
+          englishTitle: meta.englishTitle,
+          items: splitMemoryItems(content).map((text, index) => ({
+            id: `${meta.source}:${index}`,
+            source: meta.source,
+            index,
+            text,
+          })),
+        });
+      }
+      const pinned = splitMemoryItems(pinnedRaw).map((text, index) => ({ id: `pinned:${index}`, index, text }));
+      const facts = store.exportAll();
+      const hasCompiledMemory = compiledSections.some((section) => section.items.length > 0);
+      const hasPinnedMemory = pinned.length > 0;
+      const memoryMasterEnabled = agent.memoryMasterEnabled !== false;
+      const promptRuntimeMemoryEnabled = runtimeInjections.memory !== false;
+      return c.json({
+        agentId: agent.id,
+        memoryMasterEnabled,
+        promptRuntimeMemoryEnabled,
+        willInjectMemory: memoryMasterEnabled && promptRuntimeMemoryEnabled && (hasCompiledMemory || hasPinnedMemory),
+        hasCompiledMemory,
+        hasPinnedMemory,
+        pinned,
+        compiledSections,
+        compiledRaw,
+        facts,
+      });
+    } catch (err) {
+      if (err instanceof AgentNotFoundError) return c.json({ error: err.message }, 404);
+      return c.json({ error: err.message }, 500);
+    } finally {
+      tempStore?.close();
+    }
+  });
+
   // 读取编译后的 memory.md
   route.get("/memories/compiled", async (c) => {
     try {
@@ -431,6 +519,35 @@ export function createConfigRoute(engine) {
       const content = await fs.readFile(mdPath, "utf-8").catch(() => "");
       return c.json({ content });
     } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  route.delete("/memories/compiled-items/:source/:index", async (c) => {
+    try {
+      const agent = resolveAgentStrict(engine, c);
+      const meta = getCompiledSourceMeta(c.req.param("source"));
+      if (!meta) return c.json({ error: "invalid compiled memory source" }, 400);
+      const index = Number(c.req.param("index"));
+      if (!Number.isInteger(index) || index < 0) return c.json({ error: "invalid compiled memory index" }, 400);
+      const memoryDir = path.dirname(agent.memoryMdPath);
+      const sourcePath = path.join(memoryDir, meta.file);
+      const items = splitMemoryItems(await readTextIfExists(sourcePath));
+      if (index >= items.length) return c.json({ error: "compiled memory item not found" }, 404);
+      const [removed] = items.splice(index, 1);
+      await fs.writeFile(sourcePath, serializeMemoryItems(items), "utf-8");
+      assemble(
+        path.join(memoryDir, "facts.md"),
+        path.join(memoryDir, "today.md"),
+        path.join(memoryDir, "week.md"),
+        path.join(memoryDir, "longterm.md"),
+        agent.memoryMdPath,
+      );
+      debugLog()?.log("api", `DELETE /api/memories/compiled-items/${meta.source}/${index} agent=${agent.id}`);
+      await engine.updateConfig({}, { agentId: agent.id });
+      return c.json({ ok: true, removed });
+    } catch (err) {
+      if (err instanceof AgentNotFoundError) return c.json({ error: err.message }, 404);
       return c.json({ error: err.message }, 500);
     }
   });
@@ -465,6 +582,27 @@ export function createConfigRoute(engine) {
       clearCompiledMemoryArtifacts(memDir);
       clearCompiledSummarySources(agent.summariesDir, agent.summaryManager);
       debugLog()?.log("api", `DELETE /api/memories agent=${agent.id}`);
+      await engine.updateConfig({}, { agentId: agent.id });
+      return c.json({ ok: true });
+    } catch (err) {
+      if (err instanceof AgentNotFoundError) return c.json({ error: err.message }, 404);
+      return c.json({ error: err.message }, 500);
+    } finally {
+      tempStore?.close();
+    }
+  });
+
+  route.delete("/memories/:id", async (c) => {
+    let tempStore = null;
+    try {
+      const agent = resolveAgentStrict(engine, c);
+      const id = Number(c.req.param("id"));
+      if (!Number.isInteger(id) || id <= 0) return c.json({ error: "invalid memory id" }, 400);
+      const { store, isTemp } = getStoreForAgent(agent.id);
+      if (isTemp) tempStore = store;
+      const deleted = store.delete(id);
+      if (!deleted) return c.json({ error: "memory not found" }, 404);
+      debugLog()?.log("api", `DELETE /api/memories/${id} agent=${agent.id}`);
       await engine.updateConfig({}, { agentId: agent.id });
       return c.json({ ok: true });
     } catch (err) {

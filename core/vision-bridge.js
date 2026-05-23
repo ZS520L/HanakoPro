@@ -121,6 +121,39 @@ function compactModelRef(model) {
     : null;
 }
 
+function createVisionRequestId(now, index) {
+  return `vision-${now}-${index}-${crypto.randomBytes(3).toString("hex")}`;
+}
+
+function displayResourceLabel(value, fallback) {
+  const raw = String(value || "").trim();
+  if (!raw) return fallback;
+  try {
+    return path.basename(raw) || raw;
+  } catch {
+    return raw;
+  }
+}
+
+function visionQuestionForDisplay(userRequest, hasPrimitives) {
+  return [
+    "Analyze this image for another text-only model.",
+    hasPrimitives
+      ? "Return structured JSON with image overview, visible text, layout, answer, evidence, uncertainty, and useful visual coordinates."
+      : "Return concise sections: image_overview, visible_text, objects_and_layout, charts_or_data, user_request_answer, evidence, and uncertainty.",
+    `User request: ${userRequest || "(no explicit text request)"}`,
+  ].join("\n");
+}
+
+function emitVisionProgress(emitProgress, event) {
+  if (typeof emitProgress !== "function") return;
+  try { emitProgress({ type: "vision_progress", ...event }); } catch {}
+}
+
+function errorText(err) {
+  return err?.message || String(err);
+}
+
 function contentText(content) {
   if (typeof content === "string") return content;
   if (!Array.isArray(content)) return "";
@@ -394,7 +427,7 @@ export class VisionBridge {
     this._noteByPath = new Map();
   }
 
-  async prepare({ sessionPath, targetModel, text, images, imageAttachmentPaths, signal } = {}) {
+  async prepare({ sessionPath, targetModel, text, images, imageAttachmentPaths, signal, emitProgress } = {}) {
     if (!images?.length) return { text, images };
     if (!hasExplicitTextOnlyInput(targetModel)) return { text, images };
     throwIfAborted(signal);
@@ -413,7 +446,45 @@ export class VisionBridge {
     for (let i = 0; i < images.length; i++) {
       const img = images[i];
       throwIfAborted(signal);
-      const note = await this._analyzeImage(config, img, i, userRequest, signal);
+      const startedAt = this._now();
+      const requestId = createVisionRequestId(startedAt, i);
+      const visionCapabilities = getVisionCapabilities(config.model);
+      const progressBase = {
+        requestId,
+        imageIndex: i + 1,
+        imageCount: images.length,
+        resourceLabel: displayResourceLabel(paths[i], `image ${i + 1}`),
+        model: compactModelRef(config.model),
+        targetModel: compactModelRef(targetModel),
+        question: visionQuestionForDisplay(userRequest, !!visionCapabilities),
+        startedAt,
+      };
+      emitVisionProgress(emitProgress, {
+        phase: "running",
+        ...progressBase,
+      });
+      let note;
+      try {
+        note = await this._analyzeImage(config, img, i, userRequest, signal, {
+          emitProgress,
+          progressBase,
+          startedAt,
+        });
+      } catch (err) {
+        emitVisionProgress(emitProgress, {
+          phase: "error",
+          ...progressBase,
+          error: errorText(err),
+          elapsedMs: Math.max(0, this._now() - startedAt),
+        });
+        throw err;
+      }
+      emitVisionProgress(emitProgress, {
+        phase: "done",
+        ...progressBase,
+        response: note,
+        elapsedMs: Math.max(0, this._now() - startedAt),
+      });
       const imagePath = paths[i];
       if (imagePath) {
         const entry = {
@@ -435,7 +506,7 @@ export class VisionBridge {
     return { text, images: undefined, visionNotes: notes };
   }
 
-  async prepareResources({ sessionPath, targetModel, userRequest, text, resources, signal } = {}) {
+  async prepareResources({ sessionPath, targetModel, userRequest, text, resources, signal, emitProgress } = {}) {
     if (!resources?.length) return { notes: [] };
     if (!hasExplicitTextOnlyInput(targetModel)) return { notes: [] };
     throwIfAborted(signal);
@@ -450,6 +521,7 @@ export class VisionBridge {
 
     const request = normalizeUserRequest(userRequest ?? text);
     const notes = [];
+    const visionCapabilities = getVisionCapabilities(config.model);
     for (let i = 0; i < resources.length; i++) {
       const resource = resources[i];
       const key = String(resource?.key || "").trim();
@@ -458,6 +530,20 @@ export class VisionBridge {
 
       const existing = this._lookupNote(sessionPath, key);
       if (existing?.note) {
+        const requestId = createVisionRequestId(this._now(), i);
+        emitVisionProgress(emitProgress, {
+          phase: "done",
+          requestId,
+          imageIndex: i + 1,
+          imageCount: resources.length,
+          resourceLabel: resource?.label || key,
+          model: compactModelRef(config.model),
+          targetModel: compactModelRef(targetModel),
+          question: visionQuestionForDisplay(request, !!visionCapabilities),
+          response: existing.note,
+          elapsedMs: 0,
+          reused: true,
+        });
         notes.push({
           key,
           label: resource?.label || key,
@@ -468,7 +554,44 @@ export class VisionBridge {
       }
 
       throwIfAborted(signal);
-      const note = await this._analyzeImage(config, img, i, request, signal);
+      const startedAt = this._now();
+      const requestId = createVisionRequestId(startedAt, i);
+      const progressBase = {
+        requestId,
+        imageIndex: i + 1,
+        imageCount: resources.length,
+        resourceLabel: resource?.label || key,
+        model: compactModelRef(config.model),
+        targetModel: compactModelRef(targetModel),
+        question: visionQuestionForDisplay(request, !!visionCapabilities),
+        startedAt,
+      };
+      emitVisionProgress(emitProgress, {
+        phase: "running",
+        ...progressBase,
+      });
+      let note;
+      try {
+        note = await this._analyzeImage(config, img, i, request, signal, {
+          emitProgress,
+          progressBase,
+          startedAt,
+        });
+      } catch (err) {
+        emitVisionProgress(emitProgress, {
+          phase: "error",
+          ...progressBase,
+          error: errorText(err),
+          elapsedMs: Math.max(0, this._now() - startedAt),
+        });
+        throw err;
+      }
+      emitVisionProgress(emitProgress, {
+        phase: "done",
+        ...progressBase,
+        response: note,
+        elapsedMs: Math.max(0, this._now() - startedAt),
+      });
       const entry = {
         note,
         sessionPath: sessionPath || null,
@@ -582,7 +705,7 @@ export class VisionBridge {
     return limit ? Math.min(this._visionMaxTokens, limit) : this._visionMaxTokens;
   }
 
-  async _analyzeImage(config, img, index, userRequest, signal) {
+  async _analyzeImage(config, img, index, userRequest, signal, progressContext = {}) {
     const visionCapabilities = getVisionCapabilities(config.model);
     const key = imagePromptCacheKey(
       img,
@@ -596,8 +719,8 @@ export class VisionBridge {
     }
 
     const note = visionCapabilities
-      ? await this._analyzeImageWithPrimitives(config, img, userRequest, visionCapabilities, signal)
-      : await this._analyzeImageAsNote(config, img, userRequest, signal);
+      ? await this._analyzeImageWithPrimitives(config, img, userRequest, visionCapabilities, signal, progressContext)
+      : await this._analyzeImageAsNote(config, img, userRequest, signal, progressContext);
 
     this._analysisByPrompt.set(key, {
       note,
@@ -609,7 +732,8 @@ export class VisionBridge {
     return note;
   }
 
-  async _analyzeImageAsNote(config, img, userRequest, signal) {
+  async _analyzeImageAsNote(config, img, userRequest, signal, progressContext = {}) {
+    const { emitProgress, progressBase, startedAt } = progressContext;
     return truncate(await this._callText({
       api: config.api,
       apiKey: config.api_key,
@@ -642,10 +766,17 @@ export class VisionBridge {
       maxTokens: this._maxTokensForModel(config.model),
       timeoutMs: VISION_ANALYSIS_TIMEOUT_MS,
       signal,
+      onDelta: (_, accumulated) => emitVisionProgress(emitProgress, {
+        phase: "running",
+        ...(progressBase || {}),
+        response: accumulated,
+        elapsedMs: startedAt ? Math.max(0, this._now() - startedAt) : undefined,
+      }),
     }));
   }
 
-  async _analyzeImageWithPrimitives(config, img, userRequest, visionCapabilities, signal) {
+  async _analyzeImageWithPrimitives(config, img, userRequest, visionCapabilities, signal, progressContext = {}) {
+    const { emitProgress, progressBase, startedAt } = progressContext;
     const primitiveShape = primitivePromptShape(visionCapabilities);
     const responseText = await this._callText({
       api: config.api,
@@ -688,6 +819,12 @@ export class VisionBridge {
       maxTokens: this._maxTokensForModel(config.model),
       timeoutMs: VISION_ANALYSIS_TIMEOUT_MS,
       signal,
+      onDelta: (_, accumulated) => emitVisionProgress(emitProgress, {
+        phase: "running",
+        ...(progressBase || {}),
+        response: accumulated,
+        elapsedMs: startedAt ? Math.max(0, this._now() - startedAt) : undefined,
+      }),
     });
 
     const analysis = extractJsonObject(responseText);

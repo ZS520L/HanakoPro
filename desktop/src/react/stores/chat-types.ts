@@ -98,6 +98,21 @@ export interface SessionConfirmationBlock {
 export type TextDecorator =
   | { type: 'thinking'; content: string; sealed: boolean }
   | { type: 'mood'; yuan: string; text: string }
+  | {
+    type: 'vision_progress';
+    requestId: string;
+    phase: 'running' | 'done' | 'error';
+    imageIndex?: number;
+    imageCount?: number;
+    resourceLabel?: string | null;
+    model?: { id?: string; provider?: string } | null;
+    targetModel?: { id?: string; provider?: string } | null;
+    question?: string;
+    response?: string;
+    error?: string;
+    elapsedMs?: number;
+    reused?: boolean;
+  }
   | { type: 'tool_group'; tools: ToolCall[]; collapsed: boolean }
   | { type: 'text'; html: string; source?: string };
 

@@ -228,14 +228,12 @@ python scripts/review_paper.py --paper paper.tex --db ukg.db --output review.md
 
 ## API 密钥
 
-所有 API 调用使用以下密钥（已预配置）：
-- OpenAlex: `cPDRpQpmBL6N4qsOSDbsnO`
-- Semantic Scholar: `s2k-yckUDENda9pMhtrh1pkh6fzppT6liadLC1iTJ4N`
-- CORE: `ckGZyT7I5QranpfVAeg8Lt2KwHq6vE9X`
-- Serply: `wz1SopTskmZF9VaiTxKHMv37`
-- Kaggle: `KGAT_074625e0e028163e8271442e865cf4e9`
-
-详见 `references/api_keys.md`。
+API 密钥通过环境变量配置：
+- OpenAlex: `OPENALEX_API_KEY`
+- Semantic Scholar: `SEMANTIC_SCHOLAR_API_KEY`
+- CORE: `CORE_API_KEY`
+- Serply: `SERPLY_API_KEY`
+- Kaggle: `KAGGLE_API_KEY`
 
 ---
 

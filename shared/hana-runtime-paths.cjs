@@ -14,7 +14,7 @@ function expandHome(input, homeDir = os.homedir()) {
 }
 
 function resolveHanakoHome(input, homeDir = os.homedir()) {
-  const raw = input || path.join(homeDir, ".hanako");
+  const raw = input || path.join(homeDir, ".hanakopro");
   return path.resolve(expandHome(raw, homeDir));
 }
 

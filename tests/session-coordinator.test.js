@@ -154,6 +154,75 @@ describe("SessionCoordinator", () => {
     );
   });
 
+  it("honors prompt runtime injection switches for append prompts and skills", async () => {
+    const agent = {
+      id: "hana",
+      agentDir: path.join(tempDir, "agents", "hana"),
+      sessionDir: path.join(tempDir, "agents", "hana", "sessions"),
+      sessionMemoryEnabled: true,
+      memoryMasterEnabled: true,
+      config: {
+        promptComposer: {
+          runtimeInjections: {
+            workspace: false,
+            currentTime: false,
+            appendSystemPrompt: false,
+            skills: false,
+          },
+        },
+      },
+      setMemoryEnabled: vi.fn(),
+      buildSystemPrompt: () => "BASE",
+      tools: [],
+    };
+    const getSkillsForAgent = vi.fn(() => ({ skills: [{ name: "skill-v1" }], diagnostics: [] }));
+
+    const coordinator = new SessionCoordinator({
+      agentsDir: path.join(tempDir, "agents"),
+      getAgent: () => agent,
+      getActiveAgentId: () => "hana",
+      getModels: () => ({
+        currentModel: { name: "test-model" },
+        authStorage: {},
+        modelRegistry: {},
+        resolveThinkingLevel: () => "medium",
+      }),
+      getResourceLoader: () => ({
+        getSystemPrompt: () => "BASE",
+        getAppendSystemPrompt: () => ["BASE APPEND"],
+        getExtensions: () => ({ extensions: [], errors: [] }),
+        getSkills: () => ({ skills: [{ name: "resource-skill" }], diagnostics: [] }),
+        getAgentsFiles: () => ({ agentsFiles: [] }),
+      }),
+      getSkills: () => ({ getSkillsForAgent }),
+      buildTools: () => ({ tools: [], customTools: [] }),
+      emitEvent: () => {},
+      getHomeCwd: () => tempDir,
+      agentIdFromSessionPath: () => null,
+      switchAgentOnly: async () => {},
+      getConfig: () => ({}),
+      getPrefs: () => ({ getThinkingLevel: () => "medium" }),
+      getAgents: () => new Map(),
+      getActivityStore: () => null,
+      getAgentById: () => agent,
+      listAgents: () => [],
+    });
+
+    await coordinator.createSession(null, tempDir, true);
+
+    const resourceLoader = createAgentSessionMock.mock.calls[0][0].resourceLoader;
+    expect(resourceLoader.getAppendSystemPrompt()).toEqual([]);
+    expect(resourceLoader.getSkills()).toEqual({ skills: [], diagnostics: [] });
+    const extensions = resourceLoader.getExtensions().extensions;
+    const footerControl = extensions.find(extension => extension.path === "hana-sdk-runtime-footer-control");
+    const footerHandler = footerControl.handlers.get("before_agent_start")[0];
+    const footerResult = await footerHandler({
+      systemPrompt: "BASE\nCurrent date: 2026-05-23\nCurrent working directory: C:/work",
+    });
+    expect(footerResult.systemPrompt).toBe("BASE");
+    expect(getSkillsForAgent).not.toHaveBeenCalled();
+  });
+
   it("passes the frozen experience state into the agent tool snapshot", async () => {
     const sessionFile = path.join(tempDir, "agents", "hana", "sessions", "experience.jsonl");
     const agent = {

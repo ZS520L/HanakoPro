@@ -52,10 +52,14 @@ CLAUDE.md
 
 # 临时文件
 tmp/
+tmp-*.md
+/1.py
+/image/tmp-*/
 test-results/
 __pycache__/
 *.pyc
-*.err
+*.bak
+*.bak-*
 *.obj
 /index.html
 homepage/
@@ -72,17 +76,12 @@ secrets.yaml
 secrets.json
 auth.json
 **/api_keys.md
+**/api-keys.md
 
 # 日志
 *.log
-start*.log
-dist-build*.log
-dist-build*.err
-dist-eb*.log
-dist-eb*.err
-hana-debug.log
-npm-install.log
-npm-pty-install.log
+*.err
+dist-*.txt
 logs/
 
 # 系统文件

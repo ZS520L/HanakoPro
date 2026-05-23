@@ -8,7 +8,7 @@
 import fs from "fs";
 import fsp from "fs/promises";
 import path from "path";
-import { createAgentSession, SessionManager, estimateTokens, findCutPoint, generateSummary, refreshSessionModelFromRegistry } from "../lib/pi-sdk/index.js";
+import { createAgentSession, SessionManager, estimateTokens, findCutPoint, formatSkillsForPrompt, generateSummary, refreshSessionModelFromRegistry } from "../lib/pi-sdk/index.js";
 import { createDefaultSettings } from "./session-defaults.js";
 import { computeHardTruncation } from "./compaction-utils.js";
 import { teardownSessionResources } from "./session-teardown.js";
@@ -32,6 +32,7 @@ import {
 } from "./tool-availability.js";
 import { isActiveSessionPath } from "./message-utils.js";
 import { formatWorkspaceScopePrompt, normalizeWorkspaceScope } from "../shared/workspace-scope.js";
+import { getPromptRuntimeInjections } from "../shared/prompt-composer.js";
 import { getProviderPromptPatches } from "./provider-prompt-patches.js";
 import { prepareVisionInputForTextOnlyModel } from "./vision-prepare.js";
 import { adaptVisualContextMessages } from "./visual-context-pipeline.js";
@@ -228,7 +229,9 @@ function buildAppendSystemPromptSnapshot({
   hasDeferredResultStore,
   locale,
   workspaceScope,
+  runtimeInjections,
 }) {
+  if (runtimeInjections?.appendSystemPrompt === false) return [];
   const parts = [
     ...(Array.isArray(baseAppend) ? baseAppend : []),
     ...(Array.isArray(providerPromptPatches) ? providerPromptPatches : []),
@@ -243,6 +246,37 @@ function buildAppendSystemPromptSnapshot({
   });
   if (workspacePrompt) parts.push(workspacePrompt);
   return normalizeStringArray(parts);
+}
+
+function getAgentPromptRuntimeInjections(agent, overridePromptComposer) {
+  const config = overridePromptComposer !== undefined ? overridePromptComposer : agent?.config?.promptComposer;
+  return getPromptRuntimeInjections(config);
+}
+
+function makeSdkRuntimeFooter({ cwd, runtimeInjections }) {
+  const lines = [];
+  if (runtimeInjections?.currentTime !== false) {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+    lines.push(`Current date: ${year}-${month}-${day}`);
+  }
+  if (runtimeInjections?.workspace !== false) {
+    lines.push(`Current working directory: ${String(cwd || "").replace(/\\/g, "/")}`);
+  }
+  return lines.join("\n");
+}
+
+function stripSdkRuntimeFooter(prompt, runtimeInjections) {
+  let next = String(prompt || "");
+  if (runtimeInjections?.workspace === false) {
+    next = next.replace(/\nCurrent working directory: [^\n]*(?=\s*$)/, "");
+  }
+  if (runtimeInjections?.currentTime === false) {
+    next = next.replace(/\nCurrent date: \d{4}-\d{2}-\d{2}(?=\nCurrent working directory:|\s*$)/, "");
+  }
+  return next;
 }
 
 export class SessionCoordinator {
@@ -427,6 +461,7 @@ export class SessionCoordinator {
     creatingAgent.setMemoryEnabled(frozenMemoryEnabled);
 
     const baseResourceLoader = this._d.getResourceLoader();
+    const runtimeInjections = getAgentPromptRuntimeInjections(agent);
     let restoredPermissionMode = null;
     if (restore && sessionPathForMeta) {
       try {
@@ -475,13 +510,16 @@ export class SessionCoordinator {
         hasDeferredResultStore: !!this._d.getDeferredResultStore?.(),
         locale: localeSnapshot,
         workspaceScope,
+        runtimeInjections,
       });
     const rawSkillsResultSnapshot = restoredPromptSnapshot?.skillsResult
-      ?? (
+      ?? (runtimeInjections.skills === false
+        ? { skills: [], diagnostics: [] }
+        : (
         skills?.getSkillsForAgent
           ? freezeSkillsResult(skills.getSkillsForAgent(agent))
           : freezeSkillsResult(baseResourceLoader.getSkills?.())
-      );
+      ));
     const skillsResultSnapshot = restoredPromptSnapshot?.skillsResult
       ? freezeSkillsResult(restoredPromptSnapshot.skillsResult)
       : freezeSkillsResult(await snapshotSkillsForSession(rawSkillsResultSnapshot, sessionPathForMeta));
@@ -525,6 +563,7 @@ export class SessionCoordinator {
                     return null;
                   },
                   warn: (msg) => log.warn(msg),
+                  emitProgress: (event) => this._d.emitEvent?.(event, sp),
                 });
                 const injectedNotes = bridge.injectNotes(adapted.messages, sp);
                 if (!adapted.injected && !injectedNotes.injected) return undefined;
@@ -533,6 +572,25 @@ export class SessionCoordinator {
                 log.warn(`vision context injection failed: ${err?.message || err}`);
                 return undefined;
               }
+            },
+          ],
+        ],
+      ]),
+      flags: new Map(),
+      shortcuts: new Map(),
+      commands: new Map(),
+      messageRenderers: new Map(),
+    };
+    const sdkRuntimeFooterControlExtension = {
+      path: "hana-sdk-runtime-footer-control",
+      tools: new Map(),
+      handlers: new Map([
+        [
+          "before_agent_start",
+          [
+            async (event) => {
+              const nextSystemPrompt = stripSdkRuntimeFooter(event.systemPrompt, runtimeInjections);
+              return nextSystemPrompt === event.systemPrompt ? undefined : { systemPrompt: nextSystemPrompt };
             },
           ],
         ],
@@ -551,9 +609,13 @@ export class SessionCoordinator {
       getExtensions: {
         value: () => {
           const base = baseResourceLoader.getExtensions?.() ?? { extensions: [], errors: [] };
+          const hanaExtensions = [visionAuxiliaryExtension];
+          if (runtimeInjections.workspace === false || runtimeInjections.currentTime === false) {
+            hanaExtensions.push(sdkRuntimeFooterControlExtension);
+          }
           return {
             ...base,
-            extensions: [visionAuxiliaryExtension, ...(base.extensions || [])],
+            extensions: [...hanaExtensions, ...(base.extensions || [])],
           };
         },
       },
@@ -812,6 +874,90 @@ export class SessionCoordinator {
     return { session, sessionPath: sessionPath || mapKey, agentId: creatingAgentId };
   }
 
+  async buildSystemPromptPreview({
+    agentId = null,
+    cwd = null,
+    memoryEnabled = true,
+    workspaceFolders = [],
+    promptComposer = undefined,
+  } = {}) {
+    const agent = (agentId ? this._d.getAgentById?.(agentId) : null) || this._d.getAgent();
+    if (!agent) throw new Error("buildSystemPromptPreview: target agent unavailable");
+    const effectiveCwd = cwd || this._d.getHomeCwd(agent.id) || process.cwd();
+    const models = this._d.getModels();
+    const effectiveModel = models.currentModel;
+    const requestedThinkingLevel = normalizeSessionThinkingLevel(this._d.getPrefs().getThinkingLevel());
+    const initialThinkingLevel = normalizeThinkingLevelForModel(requestedThinkingLevel, effectiveModel);
+    const resolvedThinkingLevel = models.resolveThinkingLevel(initialThinkingLevel);
+    const locale = agent.config?.locale || getLocale();
+    const providerPromptPatches = effectiveModel
+      ? getProviderPromptPatches(effectiveModel, {
+        reasoningLevel: resolvedThinkingLevel,
+        locale,
+      })
+      : [];
+    const workspaceScope = normalizeWorkspaceScope({
+      primaryCwd: effectiveCwd,
+      workspaceFolders,
+    });
+    const runtimeInjections = getAgentPromptRuntimeInjections(agent, promptComposer);
+    const frozenMemoryEnabled = agent.memoryMasterEnabled !== false && memoryEnabled !== false;
+    const frozenExperienceEnabled = typeof agent.experienceEnabled === "boolean"
+      ? agent.experienceEnabled === true
+      : false;
+    const prevSessionMemoryEnabled = agent.sessionMemoryEnabled;
+    agent.setMemoryEnabled(frozenMemoryEnabled);
+    let systemPrompt = "";
+    try {
+      systemPrompt = agent.buildSystemPrompt({
+        cwdOverride: effectiveCwd,
+        forceMemoryEnabled: frozenMemoryEnabled,
+        forceExperienceEnabled: frozenExperienceEnabled,
+        ...(promptComposer !== undefined ? { promptComposer } : {}),
+      });
+    } finally {
+      agent.setMemoryEnabled(prevSessionMemoryEnabled);
+    }
+    const baseResourceLoader = this._d.getResourceLoader();
+    const appendSystemPrompt = buildAppendSystemPromptSnapshot({
+      baseAppend: baseResourceLoader.getAppendSystemPrompt?.() || [],
+      providerPromptPatches,
+      hasDeferredResultStore: !!this._d.getDeferredResultStore?.(),
+      locale,
+      workspaceScope,
+      runtimeInjections,
+    });
+    const skills = this._d.getSkills?.();
+    const rawSkillsResult = skills?.getSkillsForAgent
+      ? freezeSkillsResult(runtimeInjections.skills === false ? { skills: [], diagnostics: [] } : skills.getSkillsForAgent(agent))
+      : freezeSkillsResult(runtimeInjections.skills === false ? { skills: [], diagnostics: [] } : baseResourceLoader.getSkills?.());
+    const skillsResult = freezeSkillsResult(await snapshotSkillsForSession(rawSkillsResult, null));
+    const skillsPrompt = skillsResult.skills.length > 0
+      ? formatSkillsForPrompt(skillsResult.skills)
+      : "";
+    const parts = [
+      systemPrompt,
+      ...appendSystemPrompt,
+      skillsPrompt,
+      makeSdkRuntimeFooter({ cwd: effectiveCwd, runtimeInjections }),
+    ].filter((part) => typeof part === "string" && part.trim());
+    const content = parts.join("\n\n");
+    return {
+      agentId: agent.id,
+      cwd: effectiveCwd,
+      model: effectiveModel ? { id: effectiveModel.id, provider: effectiveModel.provider, name: effectiveModel.name } : null,
+      memoryEnabled: frozenMemoryEnabled,
+      experienceEnabled: frozenExperienceEnabled,
+      content,
+      markdown: content,
+      sections: {
+        systemPrompt,
+        appendSystemPrompt,
+        skillsPrompt,
+      },
+    };
+  }
+
   getSessionWorkspaceFolders(sessionPath = this.currentSessionPath) {
     if (!sessionPath) return [];
     const entry = this._sessions.get(sessionPath);
@@ -937,6 +1083,7 @@ export class SessionCoordinator {
       getVisionBridge: () => engine?.getVisionBridge?.(),
       visionPolicyTarget: engine,
       warn: (msg) => (engine?.log || console).warn?.(`[session] ${msg}`),
+      emitProgress: (event) => this._d.emitEvent?.(event, sp),
     }));
     assertVideoInputSupported(this._session.model, opts?.videos);
     const promptOpts = buildPromptMediaOptions(opts);
@@ -996,6 +1143,7 @@ export class SessionCoordinator {
         visionPolicyTarget: engine,
         warn: (msg) => (engine?.log || console).warn?.(`[session] ${msg}`),
         signal: abortController.signal,
+        emitProgress: (event) => this._d.emitEvent?.(event, sessionPath),
       }));
     } finally {
       if (this._prePromptAbortControllers.get(sessionPath) === abortController) {

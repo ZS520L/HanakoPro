@@ -27,8 +27,8 @@ function makeApp({ gotLock = true } = {}) {
 describe("desktop client single instance lock", () => {
   it("sets the dev userData namespace before requesting the lock", () => {
     const { app } = makeApp();
-    const defaultHome = path.join("C:", "Users", "me", ".hanako");
-    const devHome = path.join("C:", "Users", "me", ".hanako-dev");
+    const defaultHome = path.join("C:", "Users", "me", ".hanakopro");
+    const devHome = path.join("C:", "Users", "me", ".hanakopro-dev");
 
     const acquired = configureClientSingleInstance(app, {
       hanakoHome: devHome,
@@ -39,7 +39,7 @@ describe("desktop client single instance lock", () => {
     expect(acquired).toBe(true);
     expect(app.setPath).toHaveBeenCalledWith(
       "userData",
-      path.join("C:", "Users", "me", "AppData", "Roaming", "Hanako-dev"),
+      path.join("C:", "Users", "me", "AppData", "Roaming", "Hanakopro-dev"),
     );
     expect(app.setPath.mock.invocationCallOrder[0]).toBeLessThan(
       app.requestSingleInstanceLock.mock.invocationCallOrder[0],
@@ -48,7 +48,7 @@ describe("desktop client single instance lock", () => {
 
   it("keeps production in Electron's default userData namespace", () => {
     const { app } = makeApp();
-    const defaultHome = path.join("C:", "Users", "me", ".hanako");
+    const defaultHome = path.join("C:", "Users", "me", ".hanakopro");
 
     const acquired = configureClientSingleInstance(app, {
       hanakoHome: defaultHome,
@@ -65,8 +65,8 @@ describe("desktop client single instance lock", () => {
     const { app } = makeApp({ gotLock: false });
 
     const acquired = configureClientSingleInstance(app, {
-      hanakoHome: path.join("C:", "Users", "me", ".hanako"),
-      defaultHome: path.join("C:", "Users", "me", ".hanako"),
+      hanakoHome: path.join("C:", "Users", "me", ".hanakopro"),
+      defaultHome: path.join("C:", "Users", "me", ".hanakopro"),
       onSecondInstance: vi.fn(),
     });
 
@@ -81,8 +81,8 @@ describe("desktop client single instance lock", () => {
     const onSecondInstance = vi.fn();
 
     configureClientSingleInstance(app, {
-      hanakoHome: path.join("C:", "Users", "me", ".hanako"),
-      defaultHome: path.join("C:", "Users", "me", ".hanako"),
+      hanakoHome: path.join("C:", "Users", "me", ".hanakopro"),
+      defaultHome: path.join("C:", "Users", "me", ".hanakopro"),
       onSecondInstance,
     });
 

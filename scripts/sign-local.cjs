@@ -11,7 +11,7 @@ const { execSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
 
-const APP = "/Applications/Hanako.app";
+const APP = "/Applications/HanakoPro.app";
 const ENT = path.join(__dirname, "..", "desktop", "entitlements.mac.plist");
 
 function sign(target, opts = "") {

@@ -74,6 +74,44 @@ describe("VisionBridge", () => {
     expect(injected.messages[0].content[0].text).toContain(VISION_CONTEXT_END);
   });
 
+  it("streams vision note deltas through progress events", async () => {
+    const callText = vi.fn(async ({ onDelta }) => {
+      onDelta?.("image_overview: A", "image_overview: A");
+      onDelta?.(" window.", "image_overview: A window.");
+      return "image_overview: A window.\nuser_request_answer: It is a UI screenshot.";
+    });
+    const { bridge } = makeBridge(callText);
+    const events = [];
+
+    await bridge.prepare({
+      sessionPath: "/tmp/session.jsonl",
+      targetModel: { id: "deepseek-chat", provider: "deepseek", input: ["text"] },
+      text: `[attached_image: ${pathA}]\nwhat is this?`,
+      images: [image],
+      imageAttachmentPaths: [pathA],
+      emitProgress: (event) => events.push(event),
+    });
+
+    expect(callText).toHaveBeenCalledTimes(1);
+    expect(callText.mock.calls[0][0].onDelta).toEqual(expect.any(Function));
+    expect(events.map((event) => event.phase)).toEqual(["running", "running", "running", "done"]);
+    expect(events[1]).toMatchObject({
+      type: "vision_progress",
+      phase: "running",
+      response: "image_overview: A",
+    });
+    expect(events[2]).toMatchObject({
+      phase: "running",
+      response: "image_overview: A window.",
+    });
+    expect(events[3]).toMatchObject({
+      phase: "done",
+      response: expect.stringContaining("user_request_answer"),
+      model: { id: "qwen-vl", provider: "dashscope" },
+      targetModel: { id: "deepseek-chat", provider: "deepseek" },
+    });
+  });
+
   it("restores vision notes from the session sidecar after the in-memory bridge is gone", async () => {
     const dir = makeTempDir();
     const sessionPath = path.join(dir, "session.jsonl");

@@ -8,6 +8,7 @@ import { extractToolDetail } from '../../utils/message-parser';
 import type { ToolDetail } from '../../utils/message-parser';
 import { TerminalSessionCard } from './TerminalSessionCard';
 import { FileDiffCard } from './FileDiffCard';
+import { openSettingsModal } from '../../stores/settings-modal-actions';
 
 import type { ToolCall } from '../../stores/chat-types';
 import type { TerminalAggregate } from './AssistantMessage';
@@ -25,6 +26,30 @@ interface Props {
    * 避免 server 重启后历史对话的终端卡变成"(暂无输出…)"。
    */
   terminalAggregates?: Map<string, TerminalAggregate>;
+}
+
+function isMemoryMutationTool(tool: ToolCall): boolean {
+  return (tool.name === 'pin_memory' || tool.name === 'unpin_memory')
+    && tool.done
+    && tool.success
+    && tool.details?.memoryChanged !== false;
+}
+
+function memoryMutationSummary(tool: ToolCall): string {
+  if (tool.name === 'pin_memory') {
+    const content = typeof tool.args?.content === 'string' ? tool.args.content.trim() : '';
+    return content ? `Created "${content}" memory` : 'Created a memory';
+  }
+  const keyword = typeof tool.args?.keyword === 'string' ? tool.args.keyword.trim() : '';
+  return keyword ? `Removed memories matching "${keyword}"` : 'Removed a memory';
+}
+
+function openMemoryManager() {
+  window.sessionStorage?.setItem('hana-settings-focus', 'memory-management');
+  openSettingsModal('agent');
+  const focus = () => window.dispatchEvent(new Event('hana-focus-memory-management'));
+  window.setTimeout(focus, 120);
+  window.setTimeout(focus, 450);
 }
 
 function getToolLabel(name: string, phase: string, agentName: string): string {
@@ -210,6 +235,7 @@ export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, co
       newContent: newC ?? '',
     });
   }
+  const memoryMutationTools = tools.filter(isMemoryMutationTool);
 
   // 摘要标题
   const _t = window.t ?? ((p: string) => p);
@@ -242,6 +268,9 @@ export const ToolGroupBlock = memo(function ToolGroupBlock({ tools: rawTools, co
       <div className={`${styles.toolGroupContent}${collapsed && !isSingle ? ` ${styles.toolGroupContentCollapsed}` : ''}`}>
         {tools.map((tool, i) => (
           <ToolIndicator key={`${tool.name}-${i}`} tool={tool} agentName={agentName} />
+        ))}
+        {memoryMutationTools.map((tool, i) => (
+          <MemoryUpdateNotice key={`memory-update-${tool.name}-${i}`} tool={tool} />
         ))}
         {tools.filter(shouldShowLiveFileCard).map((tool, i) => (
           <FileWriteLiveCard key={`live-file-${tool.name}-${i}`} tool={tool} />
@@ -418,6 +447,22 @@ function FileWriteLiveCard({ tool }: { tool: ToolCall }) {
           <span className={styles.liveFileWritePlaceholder}>{stage}</span>
         )}
       </div>
+    </div>
+  );
+}
+
+function MemoryUpdateNotice({ tool }: { tool: ToolCall }) {
+  return (
+    <div className={styles.memoryUpdateNotice}>
+      <div className={styles.memoryUpdateHeader}>
+        <span className={styles.memoryUpdateTitle}>Auto-generated memory was updated</span>
+        <span className={styles.memoryUpdateInfo} title="The assistant changed persistent memory. Review and edit it in Memory Management.">ⓘ</span>
+        <button type="button" className={styles.memoryUpdateManage} onClick={openMemoryManager}>
+          Manage
+          <span aria-hidden="true">→</span>
+        </button>
+      </div>
+      <div className={styles.memoryUpdateBody}>{memoryMutationSummary(tool)}</div>
     </div>
   );
 }

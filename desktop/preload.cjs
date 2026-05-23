@@ -38,6 +38,24 @@ contextBridge.exposeInMainWorld("hana", {
     ipcRenderer.on("auto-update-state", handler);
     return () => ipcRenderer.removeListener("auto-update-state", handler);
   },
+  desktopPetGetState: () => ipcRenderer.invoke("desktop-pet-get-state"),
+  desktopPetSetState: (patch) => ipcRenderer.invoke("desktop-pet-set-state", patch),
+  desktopPetSelectCustomImage: (mood) => ipcRenderer.invoke("desktop-pet-select-custom-image", mood),
+  desktopPetResetCustomImage: (mood) => ipcRenderer.invoke("desktop-pet-reset-custom-image", mood),
+  desktopPetGetChatSession: () => ipcRenderer.invoke("desktop-pet-get-chat-session"),
+  desktopPetSendPrompt: (text) => ipcRenderer.invoke("desktop-pet-send-prompt", text),
+  desktopPetOpenMain: () => ipcRenderer.invoke("desktop-pet-open-main"),
+  desktopPetForwardEvent: (event) => ipcRenderer.send("desktop-pet-forward-event", event),
+  onDesktopPetChatEvent: (cb) => {
+    const handler = (_, event) => cb(event);
+    ipcRenderer.on("desktop-pet-chat-event", handler);
+    return () => ipcRenderer.removeListener("desktop-pet-chat-event", handler);
+  },
+  onDesktopPetState: (cb) => {
+    const handler = (_, state) => cb(state);
+    ipcRenderer.on("desktop-pet-state", handler);
+    return () => ipcRenderer.removeListener("desktop-pet-state", handler);
+  },
   appReady: () => ipcRenderer.invoke("app-ready"),
   syncWindowTheme: (theme) => ipcRenderer.send("window-theme-changed", theme),
   selectFolder: () => ipcRenderer.invoke("select-folder"),

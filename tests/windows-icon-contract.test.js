@@ -61,7 +61,7 @@ describe("Windows icon contract", () => {
     const main = fs.readFileSync(path.join(ROOT, "desktop", "main.cjs"), "utf-8");
 
     expect(main).toContain("app.setAppUserModelId");
-    expect(main).toContain("com.hanako.app");
+    expect(main).toContain("com.hanakopro.app");
     expect(main).toContain('"icon.ico"');
     expect(main).toContain('"tray.ico"');
     expect(main).not.toMatch(/titleBarOpts[\s\S]*?"tray\.ico"[\s\S]*?return\s+\{\s*frame:\s*false,\s*icon:/);

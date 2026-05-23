@@ -257,14 +257,14 @@ export class AgentManager {
       const locale = ag.config?.locale || "zh";
       const desc = await generateDescription(utilConfig, source, locale);
       if (!desc) {
-        log.log(`[description] ${agentId}: 生成跳过（LLM 不可用或返回空）`);
+        logger.log(`[description] ${agentId}: 生成跳过（LLM 不可用或返回空）`);
         return;
       }
 
       fs.writeFileSync(descPath, `<!-- sourceHash: ${hash} -->\n${desc}`, "utf-8");
-      log.log(`[description] ${agentId}: 已更新`);
+      logger.log(`[description] ${agentId}: 已更新`);
     } catch (err) {
-      console.warn(`[agent-mgr] _refreshDescription(${agentId}) failed:`, err.message);
+      logger.warn(`_refreshDescription(${agentId}) failed: ${err.message}`);
     }
   }
 
@@ -477,7 +477,7 @@ export class AgentManager {
     }
 
     this.invalidateAgentListCache();
-    log.log(`创建助手: ${name} (${agentId})`);
+    logger.log(`创建助手: ${name} (${agentId})`);
     return { id: agentId, name: name.trim() };
   }
 
@@ -514,7 +514,7 @@ export class AgentManager {
       throw new Error(t("error.agentNotFound", { id: agentId }));
     }
     const prevAgentId = this._activeAgentId;
-    log.log(`switching agent to ${agentId}`);
+    logger.log(`switching agent to ${agentId}`);
     try {
       clearConfigCache();
       this._activeAgentId = agentId;
@@ -532,10 +532,10 @@ export class AgentManager {
         }
         models.defaultModel = model;
       } else if (chatRef) {
-        log.warn(`switchAgent(${agentId}): models.chat 缺 provider (${JSON.stringify(chatRef)})，跳过默认模型设置`);
+        logger.warn(`switchAgent(${agentId}): models.chat 缺 provider (${JSON.stringify(chatRef)})，跳过默认模型设置`);
       }
       const effectiveModel = ref?.id || models.defaultModel?.id || "inherited";
-      log.log(`agent switched to ${this.agent.agentName} (${agentId}), model=${effectiveModel}`);
+      logger.log(`agent switched to ${this.agent.agentName} (${agentId}), model=${effectiveModel}`);
     } catch (err) {
       this._activeAgentId = prevAgentId;
       throw err;
@@ -557,7 +557,7 @@ export class AgentManager {
       const nextCwd = homeFolder || previousCwd || engine?.getHomeCwd?.(agentId) || undefined;
       const sessionResult = await this._d.getSessionCoordinator().createSession(null, nextCwd);
       const cwd = sessionResult?.session?.sessionManager?.getCwd?.() || nextCwd || null;
-      log.log(`已切换到助手: ${this.agent.agentName} (${agentId})`);
+      logger.log(`已切换到助手: ${this.agent.agentName} (${agentId})`);
       return {
         ...sessionResult,
         cwd,
@@ -600,7 +600,7 @@ export class AgentManager {
     try {
       await this._d.getChannelManager().cleanupAgentFromChannels(agentId);
     } catch (err) {
-      log.error(`频道清理失败 (${agentId}): ${err.message}`);
+      logger.error(`频道清理失败 (${agentId}): ${err.message}`);
     }
 
     await fsp.rm(agentDir, { recursive: true, force: true });
@@ -609,7 +609,7 @@ export class AgentManager {
       try {
         detachAgentFromBundles({ hanakoHome: this._d.hanakoHome }, agentId);
       } catch (err) {
-        log.error(`Skill Bundle 解耦失败 (${agentId}): ${err.message}`);
+        logger.error(`Skill Bundle 解耦失败 (${agentId}): ${err.message}`);
       }
     }
 
@@ -628,7 +628,7 @@ export class AgentManager {
     }
 
     this.invalidateAgentListCache();
-    log.log(`已删除助手: ${agentId}`);
+    logger.log(`已删除助手: ${agentId}`);
   }
 
   // ── Utility ──

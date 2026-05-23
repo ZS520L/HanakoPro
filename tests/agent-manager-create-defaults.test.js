@@ -70,6 +70,8 @@ describe("AgentManager.createAgent default skills.enabled", () => {
   let productDir;
   let mgr;
   let skillsMock;
+  let modelsMock;
+  let sessionCoordinatorMock;
 
   function seedTemplate(enabledLiteral = '["skill-creator"]') {
     fs.writeFileSync(
@@ -101,11 +103,7 @@ describe("AgentManager.createAgent default skills.enabled", () => {
         getPreferences: () => ({}),
         savePrimaryAgent: vi.fn(),
       }),
-      getModels: () => ({
-        resolveModelWithCredentials: vi.fn(),
-        defaultModel: { id: "test-model", provider: "test-provider" },
-        availableModels: [],
-      }),
+      getModels: () => modelsMock,
       getHub: () => ({
         scheduler: {
           startAgentCron: vi.fn(),
@@ -121,7 +119,7 @@ describe("AgentManager.createAgent default skills.enabled", () => {
         setupChannelsForNewAgent: vi.fn(),
         cleanupAgentFromChannels: vi.fn(),
       }),
-      getSessionCoordinator: () => ({}),
+      getSessionCoordinator: () => sessionCoordinatorMock,
     });
   }
 
@@ -140,6 +138,14 @@ describe("AgentManager.createAgent default skills.enabled", () => {
           .map((s) => s.name);
       },
       syncAgentSkills: vi.fn(),
+    };
+    modelsMock = {
+      resolveModelWithCredentials: vi.fn(),
+      defaultModel: { id: "test-model", provider: "test-provider" },
+      availableModels: [],
+    };
+    sessionCoordinatorMock = {
+      createSession: vi.fn(async () => ({ sessionPath: "/tmp/new.jsonl", agentId: "other" })),
     };
 
     mgr = makeMgr();
@@ -263,6 +269,29 @@ describe("AgentManager.createAgent default skills.enabled", () => {
     expect(seed.imported.packageName).toBe("imported-package.zip");
     expect(seed.snapshot).toBe(seed.summary);
     expect(skillsMock.syncAgentSkills).toHaveBeenCalled();
+  });
+
+  it("creates a session for another agent after switching the active pointer", async () => {
+    modelsMock.availableModels = [{ id: "test-model", provider: "test-provider", name: "Test Model" }];
+    mgr.agents.set("current", {
+      id: "current",
+      agentName: "Current",
+      config: { models: { chat: { id: "test-model", provider: "test-provider" } } },
+    });
+    mgr.agents.set("other", {
+      id: "other",
+      agentName: "Other",
+      config: { models: { chat: { id: "test-model", provider: "test-provider" } } },
+    });
+    mgr.activeAgentId = "current";
+
+    await expect(mgr.createSessionForAgent("other", "/workspace")).resolves.toEqual({
+      sessionPath: "/tmp/new.jsonl",
+      agentId: "other",
+    });
+
+    expect(mgr.activeAgentId).toBe("other");
+    expect(sessionCoordinatorMock.createSession).toHaveBeenCalledWith(null, "/workspace", true, null, {});
   });
 
   it("includes each agent memory master state in the agent list", async () => {

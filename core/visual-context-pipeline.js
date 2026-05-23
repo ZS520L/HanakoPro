@@ -191,6 +191,7 @@ export async function adaptVisualContextMessages({
   isVisionAuxiliaryEnabled,
   resolveSessionFile,
   warn,
+  emitProgress,
 } = {}) {
   if (!Array.isArray(messages)) return { messages, injected: 0 };
   if (!isExplicitTextOnlyModel(targetModel)) return { messages, injected: 0 };
@@ -218,6 +219,7 @@ export async function adaptVisualContextMessages({
     targetModel,
     userRequest: userRequestFromMessages(messages),
     resources,
+    emitProgress,
   });
   const notesByKey = new Map((prepared.notes || []).map((note) => [note.key, note]));
   let injected = 0;

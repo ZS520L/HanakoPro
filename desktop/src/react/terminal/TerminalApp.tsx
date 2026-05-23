@@ -282,14 +282,30 @@ export function TerminalApp() {
             </div>
           ))}
         </div>
-        <button
-          className={s.newBtn}
-          onClick={() => createTab(getInitialCwd())}
-          title="新建终端"
-          disabled={!serverInfo}
-        >
-          +
-        </button>
+        <div className={s.windowControls}>
+          <button
+            className={s.iconBtn}
+            onClick={() => createTab(getInitialCwd())}
+            title="新建终端"
+            disabled={!serverInfo}
+          >
+            +
+          </button>
+          <button
+            className={s.iconBtn}
+            onClick={() => window.platform?.windowMinimize?.()}
+            title="最小化终端窗口"
+          >
+            −
+          </button>
+          <button
+            className={`${s.iconBtn} ${s.closeBtn}`}
+            onClick={() => window.platform?.windowClose?.()}
+            title="关闭终端窗口"
+          >
+            ×
+          </button>
+        </div>
       </div>
       <div className={s.body}>
         {visibleTabs.map(t => (

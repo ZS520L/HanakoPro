@@ -1,0 +1,4 @@
+interface:
+  display_name: "Hana Plugin Creator"
+  short_description: "Plan and scaffold Hana plugins"
+  default_prompt: "Help me create a Hana plugin. Start with the right beginner or developer flow."

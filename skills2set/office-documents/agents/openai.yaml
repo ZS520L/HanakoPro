@@ -1,0 +1,4 @@
+interface:
+  display_name: "Office Documents"
+  short_description: "Read and safely edit PDF, Word, Excel, and PowerPoint files"
+  default_prompt: "Read or make a safe, verified edit to this PDF, DOCX, XLSX, or PPTX file."

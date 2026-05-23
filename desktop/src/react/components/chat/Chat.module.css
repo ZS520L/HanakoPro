@@ -969,6 +969,66 @@
     background: var(--overlay-subtle);
 }
 
+.memoryUpdateNotice {
+    width: min(640px, 78vw);
+    margin: 0.35rem 0 0.45rem;
+    border: 1px solid var(--overlay-light);
+    border-radius: 8px;
+    background: color-mix(in srgb, var(--bg-card, var(--bg)) 92%, transparent);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04);
+    overflow: hidden;
+}
+
+.memoryUpdateHeader {
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.42rem 0.65rem;
+    border-bottom: 1px solid var(--overlay-light);
+    color: var(--text);
+    font-size: 0.84rem;
+    line-height: 1.35;
+}
+
+.memoryUpdateTitle {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.memoryUpdateInfo {
+    flex: 0 0 auto;
+    color: var(--text-muted);
+    font-size: 0.78rem;
+}
+
+.memoryUpdateManage {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 0.82rem;
+    cursor: pointer;
+    transition: color var(--duration-fast);
+}
+
+.memoryUpdateManage:hover {
+    color: var(--accent);
+}
+
+.memoryUpdateBody {
+    padding: 0.45rem 0.65rem;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
 .toolExpandArrow {
     font-size: 0.7rem;
     color: var(--text-muted);
@@ -1089,6 +1149,119 @@
     border-radius: 999px;
     background: var(--accent);
     animation: hana-pulse 1.2s ease-in-out infinite;
+}
+
+/* ── 辅助视觉进度卡片 ── */
+
+.visionProgressCard {
+    width: min(100%, 720px);
+    margin: 0.25rem 0 0.55rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-card, 10px);
+    background: color-mix(in srgb, var(--bg-card, var(--bg)) 92%, var(--accent) 8%);
+    box-shadow: 0 1px 5px rgba(0, 0, 0, 0.035);
+    overflow: hidden;
+}
+
+.visionProgressSummary {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.52rem 0.72rem;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 0.82rem;
+    list-style: none;
+    user-select: none;
+}
+
+.visionProgressSummary::-webkit-details-marker {
+    display: none;
+}
+
+.visionProgressSpinner {
+    width: 0.78rem;
+    height: 0.78rem;
+    flex-shrink: 0;
+    border: 2px solid color-mix(in srgb, var(--accent) 25%, transparent);
+    border-top-color: var(--accent);
+    border-radius: 999px;
+    animation: hana-spin 0.8s linear infinite;
+}
+
+.visionProgressDot {
+    width: 0.58rem;
+    height: 0.58rem;
+    flex-shrink: 0;
+    border-radius: 999px;
+    background: var(--accent);
+}
+
+.visionProgressDot[data-error="true"] {
+    background: var(--coral);
+}
+
+.visionProgressTitle {
+    font-weight: 600;
+}
+
+.visionProgressMeta {
+    min-width: 0;
+    margin-left: auto;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+}
+
+.visionProgressBody {
+    padding: 0 0.72rem 0.72rem;
+    color: var(--text);
+}
+
+.visionProgressGrid {
+    display: grid;
+    grid-template-columns: max-content minmax(0, 1fr);
+    gap: 0.18rem 0.65rem;
+    margin-bottom: 0.55rem;
+    color: var(--text-muted);
+    font-size: 0.76rem;
+}
+
+.visionProgressGrid strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--text);
+    font-weight: 500;
+}
+
+.visionProgressSection {
+    margin-top: 0.5rem;
+}
+
+.visionProgressLabel {
+    margin-bottom: 0.25rem;
+    color: var(--text-muted);
+    font-size: 0.74rem;
+    font-weight: 600;
+}
+
+.visionProgressSection pre {
+    margin: 0;
+    max-height: 12rem;
+    overflow: auto;
+    padding: 0.55rem 0.65rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--bg) 84%, #000 16%);
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
 }
 
 /* ── 文件输出卡片 ── */

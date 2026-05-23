@@ -5,10 +5,12 @@ import { act, cleanup, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ToolGroupBlock } from '../../components/chat/ToolGroupBlock';
 import { AssistantMessage } from '../../components/chat/AssistantMessage';
+import { useStore } from '../../stores';
 
 describe('ToolGroupBlock', () => {
   beforeEach(() => {
     window.t = ((key: string) => key) as typeof window.t;
+    useStore.setState({ settingsModal: { open: false, activeTab: 'agent' } } as never);
   });
 
   afterEach(() => {
@@ -159,5 +161,48 @@ describe('ToolGroupBlock', () => {
     expect(screen.getByText('new')).toBeTruthy();
     expect(screen.getByText(/正在写入内容/)).toBeTruthy();
     expect(screen.queryByText(/50%/)).toBeNull();
+  });
+
+  it('shows a Windsurf-style memory update notice with a Manage shortcut', () => {
+    const dispatchSpy = vi.spyOn(window, 'dispatchEvent');
+
+    render(
+      <ToolGroupBlock
+        collapsed={false}
+        tools={[{
+          name: 'pin_memory',
+          args: { content: '我是博士' },
+          done: true,
+          success: true,
+          details: { memoryChanged: true },
+        }]}
+      />,
+    );
+
+    expect(screen.getByText('Auto-generated memory was updated')).toBeTruthy();
+    expect(screen.getByText('Created "我是博士" memory')).toBeTruthy();
+
+    screen.getByRole('button', { name: /Manage/ }).click();
+
+    expect(useStore.getState().settingsModal).toEqual({ open: true, activeTab: 'agent' });
+    expect(window.sessionStorage.getItem('hana-settings-focus')).toBe('memory-management');
+    expect(dispatchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'hana-focus-memory-management' }));
+  });
+
+  it('does not show the memory notice when pin_memory made no change', () => {
+    render(
+      <ToolGroupBlock
+        collapsed={false}
+        tools={[{
+          name: 'pin_memory',
+          args: { content: '我是博士' },
+          done: true,
+          success: true,
+          details: { memoryChanged: false },
+        }]}
+      />,
+    );
+
+    expect(screen.queryByText('Auto-generated memory was updated')).toBeNull();
   });
 });

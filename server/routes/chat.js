@@ -755,6 +755,24 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         messageId: event.messageId || null,
         clientMessageId: event.clientMessageId || null,
       });
+    } else if (event.type === "vision_progress") {
+      if (!ss) return;
+      emitStreamEvent(sessionPath, ss, {
+        type: "vision_progress",
+        phase: event.phase || "running",
+        requestId: event.requestId || null,
+        imageIndex: event.imageIndex,
+        imageCount: event.imageCount,
+        resourceLabel: event.resourceLabel || null,
+        model: event.model || null,
+        targetModel: event.targetModel || null,
+        question: event.question || "",
+        response: event.response || "",
+        error: event.error || "",
+        elapsedMs: event.elapsedMs,
+        reused: !!event.reused,
+        startedAt: event.startedAt,
+      });
     } else if (event.type === "session_user_message") {
       if (!ss) return;
       // 用户发了新消息：放闸所有终端会话的 humanInterruptPending，让 AI 可以重新执行 terminal_write。

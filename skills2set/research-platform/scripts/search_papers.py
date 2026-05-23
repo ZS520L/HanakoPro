@@ -3,6 +3,7 @@
 
 import argparse
 import json
+import os
 import sys
 import time
 import urllib.parse
@@ -10,10 +11,10 @@ import urllib.request
 from datetime import datetime
 
 # ── API 配置 ──────────────────────────────────────────
-OPENALEX_KEY = "cPDRpQpmBL6N4qsOSDbsnO"
-S2_KEY = "s2k-yckUDENda9pMhtrh1pkh6fzppT6liadLC1iTJ4N"
-SERPLY_KEY = "wz1SopTskmZF9VaiTxKHMv37"
-CORE_KEY = "ckGZyT7I5QranpfVAeg8Lt2KwHq6vE9X"
+OPENALEX_KEY = os.environ.get("OPENALEX_API_KEY", "")
+S2_KEY = os.environ.get("SEMANTIC_SCHOLAR_API_KEY", "")
+SERPLY_KEY = os.environ.get("SERPLY_API_KEY", "")
+CORE_KEY = os.environ.get("CORE_API_KEY", "")
 
 # ── 工具函数 ──────────────────────────────────────────
 
