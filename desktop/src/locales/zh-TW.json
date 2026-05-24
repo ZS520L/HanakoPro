@@ -824,7 +824,16 @@
       "restoreBtn": "還原",
       "noBackups": "暫無備份紀錄",
       "restoreSuccess": "已還原",
-      "restoreFailed": "還原失敗"
+      "restoreFailed": "還原失敗",
+      "dangerZone": "危險操作",
+      "resetFresh": "重設為新環境",
+      "resetFreshDesc": "清空目前 HanakoPro 設定和歷史訊息，重新啟動後再次進入初始化設定。目前資料會先移到備份目錄。",
+      "resetFreshWarning": "此操作會讓目前應用程式像首次安裝一樣啟動。請確認你已保存需要保留的資訊。",
+      "resetFreshBtn": "清空並重新啟動",
+      "resetFreshConfirm": "確定要清空目前 HanakoPro 設定和歷史訊息，並重新啟動為新環境嗎？目前資料會先移到備份目錄。",
+      "resetFreshSecondConfirm": "再次確認：應用程式將關閉服務、備份目前資料目錄，然後重新啟動進入全新設定流程。繼續？",
+      "resetFreshRestarting": "正在重新啟動...",
+      "resetFreshFailed": "重設失敗"
     },
     "me": {
       "title": "我",

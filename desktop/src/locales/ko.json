@@ -822,7 +822,16 @@
       "restoreBtn": "복원",
       "noBackups": "아직 백업이 없습니다",
       "restoreSuccess": "복원됨",
-      "restoreFailed": "복원 실패"
+      "restoreFailed": "복원 실패",
+      "dangerZone": "위험 작업",
+      "resetFresh": "새 환경으로 초기화",
+      "resetFreshDesc": "현재 HanakoPro 설정과 채팅 기록을 비우고, 재시작 후 첫 설정으로 돌아갑니다. 현재 데이터 디렉터리는 먼저 백업으로 이동됩니다.",
+      "resetFreshWarning": "이 작업을 하면 앱이 처음 설치된 것처럼 시작됩니다. 보관해야 할 정보를 저장했는지 확인해 주세요.",
+      "resetFreshBtn": "비우고 재시작",
+      "resetFreshConfirm": "현재 HanakoPro 설정과 채팅 기록을 비우고 새 환경으로 재시작할까요? 현재 데이터 디렉터리는 먼저 백업으로 이동됩니다.",
+      "resetFreshSecondConfirm": "다시 확인: 서비스를 중지하고 현재 데이터 디렉터리를 백업한 뒤 첫 설정 화면으로 재시작합니다. 계속할까요?",
+      "resetFreshRestarting": "재시작 중...",
+      "resetFreshFailed": "초기화 실패"
     },
     "me": {
       "title": "나",

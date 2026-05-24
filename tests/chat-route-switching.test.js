@@ -205,6 +205,50 @@ describe("chat route streaming error lifecycle", () => {
     expect(turnEndIndex).toBeGreaterThan(textIndex);
     expect(statusFalseIndex).toBeGreaterThan(turnEndIndex);
   });
+
+  it("closes streaming immediately on pure text provider turn_end", () => {
+    let createHandlers;
+    let subscriber;
+    const upgradeWebSocket = vi.fn((factory) => {
+      createHandlers = factory;
+      return () => new Response(null);
+    });
+    const hub = {
+      subscribe: vi.fn((cb) => {
+        subscriber = cb;
+      }),
+      send: vi.fn(async () => {}),
+    };
+    const engine = {
+      agentName: "Hana",
+      abortAllStreaming: vi.fn(async () => {}),
+      getSessionByPath: vi.fn(() => null),
+      isSessionStreaming: vi.fn(() => false),
+      isSessionSwitching: vi.fn(() => false),
+      steerSession: vi.fn(() => false),
+      slashDispatcher: null,
+    };
+
+    createChatRoute(engine, hub, { upgradeWebSocket });
+    const handlers = createHandlers({});
+    const ws = {
+      readyState: 1,
+      send: vi.fn(),
+    };
+
+    handlers.onOpen({}, ws);
+    subscriber({ type: "session_status", isStreaming: true }, "/tmp/session.jsonl");
+    subscriber({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: "纯文本回答" } }, "/tmp/session.jsonl");
+    subscriber({ type: "turn_end" }, "/tmp/session.jsonl");
+
+    const sent = ws.send.mock.calls.map(([raw]) => JSON.parse(raw));
+    const textIndex = sent.findIndex(msg => msg.type === "text_delta" && msg.delta === "纯文本回答");
+    const turnEndIndex = sent.findIndex(msg => msg.type === "turn_end");
+    const statusFalseIndex = sent.findIndex(msg => msg.type === "status" && msg.isStreaming === false);
+    expect(textIndex).toBeGreaterThan(-1);
+    expect(turnEndIndex).toBeGreaterThan(textIndex);
+    expect(statusFalseIndex).toBeGreaterThan(turnEndIndex);
+  });
 });
 
 describe("chat route interrupt prompt", () => {

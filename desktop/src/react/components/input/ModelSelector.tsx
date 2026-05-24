@@ -27,7 +27,7 @@ export function ModelSelector({ models, sessionModel, isStreaming = false, loadS
     : models.find(m => m.isCurrent);
   const sessionModelUnavailable = !!(sessionModel?.id && sessionModel.provider && models.length > 0 && !matchedSessionModel);
   const label = (() => {
-    if (loading || loadState === 'loading' || loadState === 'idle') return t('model.loading') || '...';
+    if (loading || loadState === 'loading') return t('model.loading') || '...';
     if (loadState === 'error') return t('model.loadFailed') || '...';
     if (sessionModelUnavailable) return t('model.unavailable') || '...';
     if (current?.name) return current.name;
@@ -141,10 +141,10 @@ export function ModelSelector({ models, sessionModel, isStreaming = false, loadS
   return (
     <div className={`${styles['model-selector']}${open ? ` ${styles.open}` : ''}`} ref={ref}>
       <button
-        className={`${styles['model-pill']}${(loading || loadState === 'loading' || loadState === 'idle') ? ` ${styles['model-pill-disabled']}` : ''}`}
+        className={`${styles['model-pill']}${(loading || loadState === 'loading') ? ` ${styles['model-pill-disabled']}` : ''}`}
         onClick={(e) => {
           e.stopPropagation();
-          if (loading || loadState === 'loading' || loadState === 'idle') return;
+          if (loading || loadState === 'loading') return;
           if (isStreaming) {
             useStore.getState().addToast(t('model.switchWhileStreaming'), 'warning', 4000, {
               dedupeKey: 'model-switch-streaming',

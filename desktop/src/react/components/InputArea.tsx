@@ -196,9 +196,15 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
   const addToast = useStore(s => s.addToast);
   const removeToast = useStore(s => s.removeToast);
 
-  const globalModelInfo = useMemo(() => models.find(m => m.isCurrent), [models]);
   const sessionModel = useStore(s => s.currentSessionPath ? s.sessionModelsByPath[s.currentSessionPath] : undefined);
-  const currentModelInfo = sessionModel || globalModelInfo;
+  const globalModelInfo = useMemo(() => models.find(m => m.isCurrent), [models]);
+  const matchedSessionModel = useMemo(() => {
+    if (!sessionModel?.id || !sessionModel.provider) return undefined;
+    return models.find(m => m.id === sessionModel.id && m.provider === sessionModel.provider);
+  }, [models, sessionModel]);
+  const currentModelInfo = matchedSessionModel
+    ? { ...matchedSessionModel, ...sessionModel }
+    : (sessionModel && models.length === 0 ? sessionModel : globalModelInfo);
   // input 数组缺失视为未知；只有显式 text-only 的模型才在 UI 上标记“辅助视觉”。
   const supportsVision = !Array.isArray(currentModelInfo?.input) || currentModelInfo.input.includes("image");
   const modelSwitching = useStore(s => s.modelSwitching);
@@ -620,7 +626,7 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
   const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && hasUsableModel;
   const modelNoticeText = modelsLoadState === 'error'
     ? t('model.loadFailedHint')
-    : modelsLoadState === 'empty'
+    : (modelsLoadState === 'empty' || (modelsLoadState === 'idle' && models.length === 0))
       ? t('model.noneConfiguredHint')
       : (modelsLoadState === 'ready' && models.length > 0 && !currentModelInfo)
         ? t('model.notSelectedHint')

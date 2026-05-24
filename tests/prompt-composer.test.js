@@ -3,10 +3,8 @@ import {
   BUILTIN_SIMPLE_PROMPT_TEMPLATES,
   DEFAULT_PROMPT_BLOCK_ORDER,
   DEFAULT_SIMPLE_PROMPT_TEMPLATE_ID,
-  DEFAULT_RUNTIME_INJECTIONS,
   SYSTEM_GENERATED_PROMPT_BLOCK_IDS,
   composePromptFromBlocks,
-  getPromptRuntimeInjections,
   normalizePromptComposerConfig,
 } from "../shared/prompt-composer.js";
 
@@ -16,7 +14,6 @@ describe("prompt composer", () => {
     expect(cfg.enabled).toBe(true);
     expect(cfg.mode).toBe("simple");
     expect(cfg.routes[0].blockIds).toEqual(DEFAULT_PROMPT_BLOCK_ORDER);
-    expect(cfg.runtimeInjections).toEqual(DEFAULT_RUNTIME_INJECTIONS);
     expect(cfg.activeSimplePresetId).toBe(DEFAULT_SIMPLE_PROMPT_TEMPLATE_ID);
     expect(cfg.simpleContent).toBe(BUILTIN_SIMPLE_PROMPT_TEMPLATES[0].content);
     expect(composePromptFromBlocks({ config: cfg, builtInBlocks: [] })).toBe(BUILTIN_SIMPLE_PROMPT_TEMPLATES[0].content);
@@ -119,11 +116,8 @@ describe("prompt composer", () => {
     })).toBe("Route 2 edit");
   });
 
-  it("keeps system-generated prompt blocks read-only", () => {
-    expect(SYSTEM_GENERATED_PROMPT_BLOCK_IDS).toContain("current-time");
-    expect(SYSTEM_GENERATED_PROMPT_BLOCK_IDS).toContain("workspace");
-    expect(SYSTEM_GENERATED_PROMPT_BLOCK_IDS).toContain("pinned-memory");
-    expect(SYSTEM_GENERATED_PROMPT_BLOCK_IDS).toContain("memory");
+  it("does not reserve runtime variable blocks as system-generated blocks", () => {
+    expect(SYSTEM_GENERATED_PROMPT_BLOCK_IDS).toEqual([]);
 
     const normalized = normalizePromptComposerConfig({
       blockOverrides: [
@@ -140,9 +134,17 @@ describe("prompt composer", () => {
       ],
     });
     expect(normalized.blockOverrides).toEqual([
+      { id: "workspace", content: "Fake workspace", enabled: true },
+      { id: "current-time", content: "Fake time", enabled: true },
+      { id: "pinned-memory", content: "Fake pinned memory", enabled: true },
+      { id: "memory", content: "Fake memory", enabled: true },
       { id: "memory-rules", content: "Editable memory rules", enabled: true },
     ]);
-    expect(normalized.blocks).toEqual([]);
+    expect(normalized.blocks).toEqual([
+      { id: "workspace", title: "Fake", content: "Custom fake workspace", enabled: true },
+      { id: "current-time", title: "Fake", content: "Custom fake time", enabled: true },
+      { id: "memory", title: "Fake", content: "Custom fake memory", enabled: true },
+    ]);
 
     const content = composePromptFromBlocks({
       config: {
@@ -178,10 +180,10 @@ describe("prompt composer", () => {
       ],
     });
 
-    expect(content).toBe("System workspace\n\nEdited memory rules\n\nSystem memory\n\nSystem time");
+    expect(content).toBe("Custom fake workspace\n\nEdited memory rules\n\nCustom fake memory\n\nCustom fake time");
   });
 
-  it("expands legacy memory routes into editable rules and read-only variables", () => {
+  it("keeps legacy route ids without expanding runtime memory blocks", () => {
     const normalized = normalizePromptComposerConfig({
       mode: "blocks",
       routes: [
@@ -191,14 +193,12 @@ describe("prompt composer", () => {
 
     expect(normalized.routes[0].blockIds).toEqual([
       "platform",
-      "memory-rules",
-      "pinned-memory",
       "memory",
       "current-time",
     ]);
   });
 
-  it("uses one simple system.content body with runtime blocks in simple mode", () => {
+  it("uses one simple system.content body without appending runtime blocks in simple mode", () => {
     const normalized = normalizePromptComposerConfig({
       enabled: true,
       mode: "simple",
@@ -225,11 +225,11 @@ describe("prompt composer", () => {
         { id: "current-time", content: "Time block" },
       ],
       variables: { agentName: "Hanako" },
-    })).toBe("Simple prompt for Hanako\n\nWorkspace block\n\nMemory rules\n\nPinned memory\n\nMemory block\n\nTime block");
+    })).toBe("Simple prompt for Hanako");
   });
 
   it("supports built-in simple prompt templates", () => {
-    const template = BUILTIN_SIMPLE_PROMPT_TEMPLATES[1];
+    const template = BUILTIN_SIMPLE_PROMPT_TEMPLATES[0];
     const normalized = normalizePromptComposerConfig({
       enabled: true,
       mode: "simple",
@@ -284,35 +284,21 @@ describe("prompt composer", () => {
     })).toBe("Review prompt for Hanako");
   });
 
-  it("can disable runtime workspace, memory, and time prompt injections", () => {
+  it("renders dynamic content only through template variables", () => {
     const normalized = normalizePromptComposerConfig({
-      runtimeInjections: {
-        workspace: false,
-        memory: false,
-        currentTime: false,
-      },
-    });
-
-    expect(getPromptRuntimeInjections(normalized)).toEqual({
-      ...DEFAULT_RUNTIME_INJECTIONS,
-      workspace: false,
-      memory: false,
-      currentTime: false,
+      enabled: true,
+      mode: "simple",
+      simpleContent: [
+        "Workspace: {{workspace}}",
+        "Skills: {{skills}}",
+        "Memory: {{pinnedMemory}}",
+        "Append: {{appendSystemPrompt}}",
+        "Mood: {{mood}}",
+      ].join("\n"),
     });
 
     const content = composePromptFromBlocks({
-      config: {
-        enabled: true,
-        activeRouteId: "default",
-        runtimeInjections: {
-          workspace: false,
-          memory: false,
-          currentTime: false,
-        },
-        routes: [
-          { id: "default", name: "Default", blockIds: ["platform", "workspace", "memory-rules", "pinned-memory", "memory", "current-time"] },
-        ],
-      },
+      config: normalized,
       builtInBlocks: [
         { id: "platform", content: "Platform block" },
         { id: "workspace", content: "Workspace block" },
@@ -321,8 +307,21 @@ describe("prompt composer", () => {
         { id: "memory", content: "Memory block" },
         { id: "current-time", content: "Time block" },
       ],
+      variables: {
+        workspace: "CWD context",
+        skills: "<available_skills />",
+        pinnedMemory: "Pinned fact",
+        appendSystemPrompt: "Append rules",
+        mood: "Mood rules",
+      },
     });
 
-    expect(content).toBe("Platform block");
+    expect(content).toBe([
+      "Workspace: CWD context",
+      "Skills: <available_skills />",
+      "Memory: Pinned fact",
+      "Append: Append rules",
+      "Mood: Mood rules",
+    ].join("\n"));
   });
 });

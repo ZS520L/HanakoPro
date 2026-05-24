@@ -147,6 +147,15 @@
     "Pro/deepseek-ai/DeepSeek-R1"
   ],
 
+  "spark": [
+    "4.0Ultra",
+    "max-32k",
+    "generalv3.5",
+    "pro-128k",
+    "generalv3",
+    "lite"
+  ],
+
   "stepfun": [
     "step-2-16k",
     "step-1-flash"

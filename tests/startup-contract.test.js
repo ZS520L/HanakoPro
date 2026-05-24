@@ -59,6 +59,8 @@ describe("local startup contract", () => {
     expect(mainCjs).toContain("needsModelSetupAfterStartup");
     expect(mainCjs).toContain("/api/models");
     expect(mainCjs).toContain("wouldSkipModelSetup: setupComplete || existingConfig");
+    expect(mainCjs).toContain("启动模型配置健康检查失败，将重新打开模型配置向导");
+    expect(mainCjs).toContain("启动模型配置健康检查返回 ${res.status}");
     expect(mainCjs).toContain('createOnboardingWindow({ skipToModelSetup: "1" })');
     expect(onboardingMain).toContain("skipToModelSetup");
     expect(onboardingApp).toContain("skipToModelSetup ? 2 : 0");
@@ -75,6 +77,19 @@ describe("local startup contract", () => {
     expect(mainCjs.indexOf("if (!opensOnboarding && splashWindow && elapsed < minSplashMs)")).toBeLessThan(
       mainCjs.indexOf("if (forceModelSetup)"),
     );
+  });
+
+  it("desktop settings can reset the current data directory into a fresh onboarding environment", () => {
+    const mainCjs = fs.readFileSync(path.join(ROOT, "desktop", "main.cjs"), "utf-8");
+    const preloadCjs = fs.readFileSync(path.join(ROOT, "desktop", "preload.cjs"), "utf-8");
+
+    expect(preloadCjs).toContain("resetToFreshEnvironment");
+    expect(mainCjs).toContain('wrapIpcHandler("reset-to-fresh-environment"');
+    expect(mainCjs).toContain("await shutdownServer()");
+    expect(mainCjs).toContain("moveCurrentHanakoHomeToBackup()");
+    expect(mainCjs).toContain("writeResetDeclineMarker()");
+    expect(mainCjs).toContain("DECLINED_MARKER");
+    expect(mainCjs).toContain("app.relaunch()");
   });
 
   it("keeps jsdom external in the server bundle for packaged runtime", () => {

@@ -317,6 +317,22 @@ describe("compiled section formatting", () => {
     expect(output).not.toContain("# 本周主题概要");
     expect(output).not.toContain("# 长期背景记录");
   });
+
+  it("assemble writes an empty memory.md when all source sections are empty", async () => {
+    const factsPath = path.join(tmpDir, "facts.md");
+    const todayPath = path.join(tmpDir, "today.md");
+    const weekPath = path.join(tmpDir, "week.md");
+    const longtermPath = path.join(tmpDir, "longterm.md");
+    const memoryPath = path.join(tmpDir, "memory.md");
+    fs.writeFileSync(factsPath, "", "utf-8");
+    fs.writeFileSync(todayPath, "（暂无）", "utf-8");
+    fs.writeFileSync(weekPath, "(none)", "utf-8");
+    fs.writeFileSync(longtermPath, "", "utf-8");
+
+    assemble(factsPath, todayPath, weekPath, longtermPath, memoryPath);
+
+    expect(fs.readFileSync(memoryPath, "utf-8")).toBe("");
+  });
 });
 
 describe("compiled memory reset watermark filtering", () => {

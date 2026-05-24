@@ -295,6 +295,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         isThinking: false,
         hasOutput: false,
         hasToolCall: false,
+        hasToolCallThisProviderTurn: false,
         hasThinking: false,
         hasError: false,
         isAborted: false,
@@ -384,6 +385,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     if (ss) {
       ss.pendingStatusFalseExtra = null;
       ss.providerTurnEnded = false;
+      ss.hasToolCallThisProviderTurn = false;
     }
     broadcast({ type: "status", isStreaming: false, sessionPath, ...extra });
   }
@@ -411,6 +413,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     clearDeferredStatusFalse(ss);
     ss.pendingStatusFalseExtra = null;
     ss.providerTurnEnded = false;
+    ss.hasToolCallThisProviderTurn = false;
     if (ss.isStreaming) finishSessionStream(ss);
     ss.thinkTagParser.reset();
     ss.moodParser.reset();
@@ -522,6 +525,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     broadcastStreamingStopped(sessionPath, ss, extra);
     ss.hasOutput = false;
     ss.hasToolCall = false;
+    ss.hasToolCallThisProviderTurn = false;
     ss.hasThinking = false;
     ss.hasError = false;
     ss.isAborted = false;
@@ -690,6 +694,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         });
       } else if (sub === "toolcall_start" || sub === "toolcall_delta" || sub === "toolcall_end") {
         ss.hasToolCall = true;
+        ss.hasToolCallThisProviderTurn = true;
         // eslint-disable-next-line no-console
         console.log("[hana-debug] message_update toolcall event:", sub, "name=", assistantToolCallFromEvent(event.assistantMessageEvent)?.name || "(none)");
         const handled = emitFileWritePrepare(event.assistantMessageEvent);
@@ -701,7 +706,10 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
         finishErroredStream(sessionPath, ss);
       }
     } else if (event.type === "toolcall_start" || event.type === "toolcall_delta" || event.type === "toolcall_end") {
-      if (ss) ss.hasToolCall = true;
+      if (ss) {
+        ss.hasToolCall = true;
+        ss.hasToolCallThisProviderTurn = true;
+      }
       // eslint-disable-next-line no-console
       console.log("[hana-debug] top-level toolcall event:", event.type, "name=", assistantToolCallFromEvent(event)?.name || "(none)");
       const handled = emitFileWritePrepare(event);
@@ -710,6 +718,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     } else if (event.type === "tool_execution_start") {
       if (!ss) return;
       ss.hasToolCall = true;
+      ss.hasToolCallThisProviderTurn = true;
       if (ss.isThinking) {
         ss.isThinking = false;
         emitStreamEvent(sessionPath, ss, { type: "thinking_end" });
@@ -903,6 +912,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
           ss.isThinking = false;
           ss.hasOutput = false;
           ss.hasToolCall = false;
+          ss.hasToolCallThisProviderTurn = false;
           ss.hasThinking = false;
           ss.hasError = false;
           ss.isAborted = false;
@@ -928,7 +938,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
       }
       if (event.isStreaming) {
         broadcast({ type: "status", isStreaming: true, sessionPath });
-      } else {
+      } else if (!ss || ss.isStreaming) {
         broadcastStreamingStopped(sessionPath, ss, {
           ...(event.aborted ? { aborted: true } : {}),
           ...(event.reason ? { reason: event.reason } : {}),
@@ -1025,7 +1035,13 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
       });
 
 
+      const providerTurnHadToolCall = ss.hasToolCallThisProviderTurn;
+      ss.hasToolCallThisProviderTurn = false;
       ss.providerTurnEnded = true;
+      if (!providerTurnHadToolCall) {
+        completeStreamingStop(sessionPath, ss, ss.pendingStatusFalseExtra || {});
+        return;
+      }
       if (!ss.deferredStatusFalseTimer && !ss.pendingStatusFalseExtra) return;
       completeStreamingStop(sessionPath, ss, ss.pendingStatusFalseExtra || {});
     } else if (event.type === "deferred_result") {

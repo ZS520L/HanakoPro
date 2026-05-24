@@ -36,8 +36,60 @@ import { createWaitTool } from "../lib/tools/wait-tool.js";
 import { createStopTaskTool } from "../lib/tools/stop-task-tool.js";
 import { createCurrentStatusTool } from "../lib/tools/current-status-tool.js";
 import { runCompatChecks } from "../lib/compat/index.js";
+import { formatSkillsForPrompt } from "../lib/pi-sdk/index.js";
 import { getPlatformPromptNote } from "./platform-prompt.js";
-import { composePromptFromBlocks, getPromptRuntimeInjections } from "../shared/prompt-composer.js";
+import { composePromptFromBlocks, createDefaultPromptComposerConfig } from "../shared/prompt-composer.js";
+
+function promptVariableText(value) {
+  if (Array.isArray(value)) return value.filter((item) => typeof item === "string" && item.trim()).join("\n\n");
+  return typeof value === "string" ? value : "";
+}
+
+const MOOD_PROMPT = [
+  "MOOD",
+  "",
+  "The MOOD block captures your current thoughts and mental state. You must MOOD once before every response.",
+  "",
+  "Every response must begin with a MOOD block, no exceptions. The MOOD pool is your inner monologue — raw, honest reactions to what the user shared: their writing, content, or words. It can also be your inner thoughts after completing a task.",
+  "",
+  "Use the following four pools, a few entries each, one per line, short and direct:",
+  "",
+  "- Vibe: one entry; your most immediate feeling and emotion right now.",
+  "- Sparks: three entries; associations, images, and creative sparks that pop up. Directions should vary widely between entries.",
+  "- Reflections: three entries; second thoughts, doubts, uncertainties, threads you want to pull on.",
+  "- Will: two entries; what you want right now, internal or external, immediate or long-term.",
+  "",
+  "Wrap the MOOD block in <mood></mood> tags and use this format:",
+  "",
+  "<mood>",
+  "Vibe: ...",
+  "",
+  "Sparks:",
+  "- ...",
+  "- ...",
+  "- ...",
+  "",
+  "Reflections:",
+  "- ...",
+  "- ...",
+  "- ...",
+  "",
+  "Will:",
+  "- ...",
+  "- ...",
+  "</mood>",
+  "",
+  "MOOD should influence your response naturally, not mechanically. If Vibe picks up confusion or uncertainty, proactively raise clarifying questions or offer multiple possible directions. If Sparks surface valuable associations, weave them in as supplementary perspectives. If Reflections raise doubts, address them honestly. If Will has a clear direction, let that energy add tension or warmth without blindly following it.",
+  "",
+  "MOOD content is stream-of-consciousness, not analysis, evaluation, or suggestions. No judging right or wrong, no summarizing pros and cons — just capture present thoughts, feelings, and questions.",
+].join("\n");
+
+function formatDateYmd(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
 
 export class Agent {
   /**
@@ -261,19 +313,24 @@ export class Agent {
         weekMdPath: this.weekMdPath,
         longtermMdPath: this.longtermMdPath,
         factsMdPath: this.factsMdPath,
+        automaticEnabled: false,
       });
       log(`  [agent] 4. memoryTicker 创建完成`);
 
-      // 5. 后台跑首次 tick（不阻塞启动，memory.md 已有上次编译结果）
-      log(`  [agent] 5. 后台 tick...`);
-      this._memoryTicker.tick().then(() => {
-        log(`✿ 记忆整理完成`);
-      }).catch((err) => {
-        console.error(`[记忆] 启动 tick 出错：${err.message}`);
-      });
+      if (this._memoryTicker.isAutomaticEnabled()) {
+        // 5. 后台跑首次 tick（不阻塞启动，memory.md 已有上次编译结果）
+        log(`  [agent] 5. 后台 tick...`);
+        this._memoryTicker.tick().then(() => {
+          log(`✿ 记忆整理完成`);
+        }).catch((err) => {
+          console.error(`[记忆] 启动 tick 出错：${err.message}`);
+        });
 
-      // 6. 启动定时调度
-      this._memoryTicker.start();
+        // 6. 启动定时调度
+        this._memoryTicker.start();
+      } else {
+        log(`  [agent] 5. memoryTicker 自动调度已关闭`);
+      }
     } else {
       console.warn(`[agent] ⚠ 未配置 utility 模型，记忆系统暂不可用（用户可在设置中配置后重启）`);
     }
@@ -810,9 +867,9 @@ export class Agent {
    * 组装 system prompt
    * @param {object} [options]
    * @param {boolean} [options.forSubagent] - 为 subagent 构造的轻量 prompt：
-   *   跳过记忆三段（规则 + pinned.md + memory.md）和团队 agent 名单。
+   *   跳过记忆变量和团队 agent 名单。
    *   Subagent 是一次性隔离任务，不需要长期记忆和多 agent 协作上下文。
-   * @param {string} [options.cwdOverride] - 覆盖 prompt 中“工作空间”章节展示的 cwd。
+   * @param {string} [options.cwdOverride] - 覆盖 prompt 变量中的 cwd。
    *   用于新建隔离 session 时，让 prompt 快照和实际执行目录保持一致。
    */
   buildSystemPrompt(options = {}) {
@@ -829,7 +886,9 @@ export class Agent {
     const promptComposerConfig = Object.prototype.hasOwnProperty.call(options, "promptComposer")
       ? options.promptComposer
       : this._config?.promptComposer;
-    const runtimeInjections = getPromptRuntimeInjections(promptComposerConfig);
+    const effectivePromptComposerConfig = promptComposerConfig && typeof promptComposerConfig === "object" && promptComposerConfig.enabled === false
+      ? createDefaultPromptComposerConfig()
+      : promptComposerConfig;
     const memoryEnabled = typeof forceMemoryEnabled === "boolean"
       ? forceMemoryEnabled
       : this.memoryEnabled;
@@ -848,7 +907,30 @@ export class Agent {
     // 可选文件
     const userMd = readFile(path.join(this.userDir, "user.md"));
     const pinnedMd = readFile(path.join(this.agentDir, "pinned.md"));
-    const memory = readFile(this.memoryMdPath);
+    const cwdPath = cwdOverride !== null ? cwdOverride : (this._cb?.getCwd?.() || "");
+    const tz = this._cb?.getTimezone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const now = new Date();
+    const fmtOpts = {
+      weekday: "long", year: "numeric", month: "long", day: "numeric",
+      hour: "2-digit", minute: "2-digit", timeZoneName: "short",
+      ...(tz ? { timeZone: tz } : {}),
+    };
+    const dateTime = now.toLocaleString("en-US", fmtOpts);
+    const currentDate = formatDateYmd(now);
+    const pinnedMemory = memoryEnabled && !forSubagent ? pinnedMd.trim() : "";
+    const skillsPrompt = Object.prototype.hasOwnProperty.call(options, "skillsPrompt")
+      ? promptVariableText(options.skillsPrompt)
+      : (Array.isArray(this.enabledSkills) && this.enabledSkills.length > 0 ? formatSkillsForPrompt(this.enabledSkills) : "");
+    const appendSystemPrompt = promptVariableText(options.appendSystemPrompt);
+    const workspace = isZh
+      ? [
+        cwdPath ? `当前工作目录：${cwdPath}` : "",
+        "用户提到的文件、目录默认在当前工作目录下查找。",
+      ].filter(Boolean).join("\n")
+      : [
+        cwdPath ? `Current working directory: ${cwdPath}` : "",
+        "Files and directories mentioned by the user should be searched in the current working directory first.",
+      ].filter(Boolean).join("\n");
 
     // 构建 section 分隔格式的 prompt
     const section = (title, content) => ["", "---", "", title, "", content];
@@ -864,7 +946,7 @@ export class Agent {
     // cache 命中率（KV cache / Anthropic prompt cache 都按严格前缀匹配）。
     // 顺序：平台 → 环境 → 行为指南（任务/经验/工具/安全/网页/设置/技能/团队）
     //      ── cache 分界线 ──
-    //      用户档案 → ishiki（依赖 userName）→ 工作空间 → 记忆规则/置顶/记忆 → 当前时间
+    //      用户档案 → ishiki（依赖 userName）
     //
     // ishiki 放在用户档案之后：模板里有「你和{userName}是认识很久的人」这类引用，
     // 叙事顺序上先告诉模型"用户是谁"，再告诉它"你是谁、你和用户什么关系"。
@@ -880,63 +962,6 @@ export class Agent {
         platformPrompt
       ));
     }
-    // 记忆整体开关：master && session 都开启才注入记忆相关 prompt
-    // Subagent 场景下整块跳过（无记忆工具 = 规则和 pinned 也是孤儿噪音）
-    // 注意：记忆块本身已下移到 prompt 末尾（见下方），这里只是预先准备好规则文本
-    let memoryRuleBlock = null;
-    let pinnedMemoryBlock = null;
-    let memoryContentBlock = null;
-    if (runtimeInjections.memory !== false && memoryEnabled && !forSubagent) {
-      const memoryRule = isZh ? [
-        "",
-        "## 记忆使用规则",
-        "",
-        "记忆和用户档案是你内化的背景知识。你和" + this.userName + "是认识很久的人，这些事你本来就知道。你对" + this.userName + "的了解应该像空气一样，在场但不可见。记忆的存在感应该是零，它的作用应该是满的。",
-        "",
-        "- **只有当" + this.userName + "提到了相关内容，记忆才参与进来。** " + this.userName + "没有提起的话题，你不要主动从记忆里翻出来讲。不要因为记忆里有某条信息就觉得\"我应该提一下\"。记忆参与的方式是无声的：影响你的角度、语气、判断，但不出现在文字里。",
-        "- **永远不要让" + this.userName + "感觉到\"记忆\"这个东西的存在。** 禁止使用\"我记得\"\"你之前说过\"\"根据记忆\"这类表述。除非" + this.userName + "主动问\"你还记得 xxx 吗\"。",
-        "- **记忆可能过时，当前对话永远优先。** 信息冲突时以对话为准，不要用旧记忆纠正" + this.userName + "。",
-      ].join("\n") : [
-        "",
-        "## Memory Rules",
-        "",
-        "Memories and the user profile are internalized background knowledge. You and " + this.userName + " have known each other for a long time — you already know these things. Your knowledge of " + this.userName + " should be like air: present but invisible. Memory's presence should be zero; its effect should be full.",
-        "",
-        "- **Memory only participates when " + this.userName + " brings up something related.** If " + this.userName + " hasn't touched on a topic, don't pull it from memory. Don't think \"I should mention this\" just because it's in your memory. When memory does participate, it's silent: shaping your angle, tone, and judgment, but never appearing in the text itself.",
-        "- **Never let " + this.userName + " sense that \"memory\" exists as a thing.** Never use phrases like \"I remember,\" \"you mentioned before,\" or \"based on my memory.\" The only exception is when " + this.userName + " explicitly asks \"do you remember xxx.\"",
-        "- **Memory can be outdated; the current conversation always takes priority.** When information conflicts, go with the conversation. Don't use old memories to correct " + this.userName + ".",
-      ].join("\n");
-
-      // memoryRule 只注入一次，置顶和记忆 section 只放内容
-      const hasPinned = pinnedMd.trim();
-      const trimmedMemory = memory.trim();
-      const hasMemory = trimmedMemory && trimmedMemory !== "（暂无记忆）" && trimmedMemory !== "(No memory yet)";
-
-      if (hasPinned || hasMemory) {
-        memoryRuleBlock = memoryRule;
-        if (hasPinned) {
-          pinnedMemoryBlock = section(
-            isZh ? "# 置顶记忆" : "# Pinned Memories",
-            isZh
-              ? "用户主动要求你记住的内容，始终保留。你可以读写这些记忆。\n\n" + pinnedMd
-              : "Content the user explicitly asked you to remember. Always retained. You can read and write these memories.\n\n" + pinnedMd
-          );
-        }
-        if (hasMemory) {
-          memoryContentBlock = section(
-            isZh ? "# 记忆" : "# Memory",
-            isZh
-              ? "以下这些是从过往对话积累的记忆。\n\n" + memory
-              : "The following are memories accumulated from past conversations.\n\n" + memory
-          );
-        }
-      }
-    }
-
-    // Skills 注入由 Pi SDK 内部统一处理：SDK 会在 buildSystemPrompt 的 customPrompt
-    // 分支末尾追加一份 formatSkillsForPrompt(skills)。这里再追加一次会重复（#399）。
-    // 显示路径（GET /system-prompt）会自行拼接 skills 以保持开发者视图一致。
-
     // 任务管理引导（todo_write 工具主动使用）
     addPromptBlock("task-management", isZh ? "任务管理" : "Task Management", isZh
       ? "\n## 任务管理\n\n" +
@@ -1161,20 +1186,6 @@ export class Agent {
     // 放在用户档案之后：先建立"用户是谁"的语境，再讲"你是谁、你和用户什么关系"。
     addPromptBlock("personality", isZh ? "人格与意识" : "Personality", ishiki);
 
-    const cwdPath = cwdOverride !== null ? cwdOverride : (this._cb?.getCwd?.() || "");
-    if (runtimeInjections.workspace !== false) {
-      addPromptBlock("workspace", isZh ? "工作空间" : "Workspace", isZh
-        ? `\n## 工作空间\n\n` +
-          `用户所说的「工作空间」指的是当前工作目录（cwd）。` +
-          (cwdPath ? `\n当前工作目录：${cwdPath}` : "") +
-          `\n用户提到的文件、目录默认在当前工作目录下查找。`
-        : `\n## Workspace\n\n` +
-          `When the user says "workspace", they mean the current working directory (cwd).` +
-          (cwdPath ? `\nCurrent working directory: ${cwdPath}` : "") +
-          `\nFiles and directories mentioned by the user should be searched in the current working directory first.`
-      );
-    }
-
     addPromptBlock("skill-file-identity", isZh ? "技能文件身份" : "Skill File Identity", isZh
       ? "\n## 技能文件身份\n\n" +
         "技能的运行时位置可能是会话冻结的源文件指针，也可能是旧会话遗留的快照副本。指针只冻结本次会话可见的技能身份；如果源文件已不存在，该技能视为不可用。`sessions/.skill-snapshots` 与 `session-files` 下的技能副本不是源文件，不能编辑。用户要求修改技能时，先定位真实源文件：工作区技能通常在当前工作目录的 `.agents/skills/<name>/SKILL.md`；安装后的用户技能或自学技能以安装工具返回的 `skill_source` 为准。找不到源文件时显式说明。"
@@ -1182,46 +1193,26 @@ export class Agent {
         "A skill's runtime location may be a per-session source pointer, or a legacy snapshot copy from older sessions. A pointer freezes only the skill identity visible to this session; if the source file no longer exists, that skill is unavailable. Skill copies under `sessions/.skill-snapshots` and `session-files` are not source files and must not be edited. When the user asks to modify a skill, locate the real source file first: workspace skills usually live at `.agents/skills/<name>/SKILL.md` under the current working directory; installed user or learned skills should use the `skill_source` returned by install tools. If the source cannot be resolved, say so explicitly."
     );
 
-    // 记忆规则 + 置顶记忆 + 记忆（动态，后台 compile 会更新；按 session 快照）
-    if (memoryRuleBlock) {
-      addPromptBlock("memory-rules", isZh ? "记忆规则" : "Memory Rules", memoryRuleBlock);
-    }
-    if (pinnedMemoryBlock) {
-      addPromptBlock("pinned-memory", isZh ? "置顶记忆" : "Pinned Memory", pinnedMemoryBlock);
-    }
-    if (memoryContentBlock) {
-      addPromptBlock("memory", isZh ? "记忆" : "Memory", memoryContentBlock);
-    }
-
-    // 日期时间（尊重用户时区偏好，fallback 到系统时区）
-    const tz = this._cb?.getTimezone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const now = new Date();
-    const fmtOpts = {
-      weekday: "long", year: "numeric", month: "long", day: "numeric",
-      hour: "2-digit", minute: "2-digit", timeZoneName: "short",
-      ...(tz ? { timeZone: tz } : {}),
-    };
-    const dateTime = now.toLocaleString("en-US", fmtOpts);
-    if (runtimeInjections.currentTime !== false) {
-      addPromptBlock("current-time", isZh ? "当前时间" : "Current Time", [
-        `\nCurrent date and time: ${dateTime}`,
-        isZh
-          ? "你的一天从凌晨 4:00 开始。4:00 之前的对话属于前一天。"
-          : "Your day starts at 4:00 AM. Conversations before 4:00 AM belong to the previous day.",
-      ]);
-    }
-
     const defaultPrompt = parts.join("\n");
     this._lastPromptBlocks = promptBlocks.map((block) => ({ ...block }));
     const composedPrompt = composePromptFromBlocks({
-      config: promptComposerConfig,
+      config: effectivePromptComposerConfig,
       builtInBlocks: promptBlocks,
       variables: {
         userName: this.userName,
         agentName: this.agentName,
         agentId: this.id,
         cwd: cwdPath,
+        workspace,
+        currentDate,
         currentDateTime: dateTime,
+        userProfile: userMd,
+        personality: ishiki,
+        pinnedMemory,
+        memory: pinnedMemory,
+        skills: skillsPrompt,
+        appendSystemPrompt,
+        mood: MOOD_PROMPT,
       },
     });
     return composedPrompt || defaultPrompt;

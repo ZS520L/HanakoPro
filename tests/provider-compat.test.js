@@ -856,6 +856,63 @@ describe("normalizeProviderPayload — DeepSeek chat 模式", () => {
     expect(payload.tools[0].function.parameters.required).toBeUndefined();
   });
 
+  it("DeepSeek Beta strict 开关开启时省略无参工具的空 object schema", () => {
+    const payload = {
+      model: "deepseek-v4-pro",
+      messages: [{ role: "user", content: "look up date" }],
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "date",
+            parameters: { type: "object", properties: {} },
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "ping",
+          },
+        },
+        {
+          type: "function",
+          function: {
+            name: "settings",
+            parameters: {
+              type: "object",
+              properties: {
+                keep: { type: "string" },
+                empty: { type: "object", properties: {} },
+                implicitEmpty: { type: "object" },
+              },
+            },
+          },
+        },
+      ],
+    };
+    const result = normalizeProviderPayload(payload, {
+      ...deepseekModel,
+      compat: { deepseekBetaStrictTools: true },
+    }, { mode: "chat" });
+    expect(result.tools[0].function.strict).toBe(true);
+    expect(result.tools[0].function).not.toHaveProperty("parameters");
+    expect(result.tools[1].function.strict).toBe(true);
+    expect(result.tools[1].function).not.toHaveProperty("parameters");
+    expect(result.tools[2].function).toMatchObject({
+      strict: true,
+      parameters: {
+        type: "object",
+        required: ["keep"],
+        additionalProperties: false,
+        properties: {
+          keep: { type: "string" },
+        },
+      },
+    });
+    expect(result.tools[2].function.parameters.properties).not.toHaveProperty("empty");
+    expect(result.tools[2].function.parameters.properties).not.toHaveProperty("implicitEmpty");
+  });
+
   it("DeepSeek Beta strict 开关默认关闭，不改工具定义", () => {
     const payload = {
       model: "deepseek-v4-pro",

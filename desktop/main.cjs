@@ -37,6 +37,7 @@ const {
   withHanaPiSdkEnv,
 } = require("../shared/hana-runtime-paths.cjs");
 const {
+  DECLINED_MARKER,
   normalizeForCompare,
   promptAndImportOfficialHanakoData,
 } = require("./src/shared/hanakopro-import.cjs");
@@ -105,9 +106,51 @@ const hanakoHome = resolveHanakoHome(process.env.HANA_HOME);
 process.env.HANA_HOME = hanakoHome;
 ensureHanaPiSdkDirs(hanakoHome);
 configureProcessPiSdkEnv(hanakoHome);
+const RESET_BACKUP_DIR_PREFIX = ".hanakopro-reset-backup-";
 
 function redactMainLogText(value) {
   return redactLogText(value, { homeDir: os.homedir(), extraPaths: [hanakoHome] });
+}
+
+function formatResetBackupTimestamp(date = new Date()) {
+  return date.toISOString().replace(/[:.]/g, "-");
+}
+
+function resolveResetBackupPath() {
+  const parent = path.dirname(hanakoHome);
+  const baseName = `${RESET_BACKUP_DIR_PREFIX}${formatResetBackupTimestamp()}`;
+  let backupPath = path.join(parent, baseName);
+  let suffix = 1;
+  while (fs.existsSync(backupPath)) {
+    backupPath = path.join(parent, `${baseName}-${suffix++}`);
+  }
+  return backupPath;
+}
+
+function assertSafeHanakoHomeResetTarget() {
+  const home = path.resolve(hanakoHome);
+  const userHome = path.resolve(os.homedir());
+  const parsed = path.parse(home);
+  if (!home || home === parsed.root || home === userHome) {
+    throw new Error("unsafe data directory");
+  }
+}
+
+function writeResetDeclineMarker() {
+  fs.mkdirSync(hanakoHome, { recursive: true });
+  fs.writeFileSync(path.join(hanakoHome, DECLINED_MARKER), new Date().toISOString() + "\n", "utf-8");
+}
+
+function moveCurrentHanakoHomeToBackup() {
+  assertSafeHanakoHomeResetTarget();
+  const backupPath = resolveResetBackupPath();
+  if (fs.existsSync(hanakoHome)) {
+    fs.renameSync(hanakoHome, backupPath);
+  } else {
+    fs.mkdirSync(backupPath, { recursive: true });
+  }
+  writeResetDeclineMarker();
+  return backupPath;
 }
 
 // 按 HANA_HOME 隔离 Electron userData（localStorage / cache / session）
@@ -404,15 +447,18 @@ async function needsModelSetupAfterStartup({ wouldSkipModelSetup = false } = {})
       headers,
       signal: AbortSignal.timeout(6000),
     });
-    if (!res.ok) return false;
+    if (!res.ok) {
+      console.warn(`[desktop] 启动模型配置健康检查返回 ${res.status}，将重新打开模型配置向导`);
+      return true;
+    }
     const data = await res.json();
     const models = Array.isArray(data?.models) ? data.models : [];
     if (models.length > 0) return false;
     console.warn("[desktop] 启动后未检测到可用模型，将重新打开模型配置向导");
     return true;
   } catch (err) {
-    console.warn("[desktop] 启动模型配置健康检查失败，继续进入主界面:", err?.message || String(err));
-    return false;
+    console.warn("[desktop] 启动模型配置健康检查失败，将重新打开模型配置向导:", err?.message || String(err));
+    return true;
   }
 }
 
@@ -2938,6 +2984,26 @@ wrapIpcHandler("run-edit-command", (event, command) => {
   return true;
 });
 wrapIpcHandler("get-app-version", () => app.getVersion());
+wrapIpcHandler("reset-to-fresh-environment", async () => {
+  console.warn("[desktop] 用户请求重置 HanakoPro 数据目录并重启");
+  isQuitting = true;
+  isExitingServer = true;
+
+  for (const win of BrowserWindow.getAllWindows()) {
+    try {
+      if (!win.isDestroyed()) win.hide();
+    } catch {}
+  }
+
+  await shutdownServer();
+  const backupPath = moveCurrentHanakoHomeToBackup();
+  console.warn("[desktop] HanakoPro 数据目录已移动到备份:", redactMainLogText(backupPath));
+
+  app.relaunch();
+  forceQuitApp = true;
+  setTimeout(() => app.quit(), 50);
+  return { ok: true, backupPath };
+});
 // 旧版兼容：check-update 返回 auto-updater 状态中的可用版本信息
 wrapIpcHandler("check-update", () => {
   const s = getUpdateState();

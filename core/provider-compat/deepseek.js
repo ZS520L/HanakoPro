@@ -274,17 +274,105 @@ function normalizeStrictSchema(schema, seen = new WeakSet()) {
   return next;
 }
 
+function pruneEmptyStrictObjectSchemas(schema, seen = new WeakSet()) {
+  if (!isPlainObject(schema)) return schema;
+  if (seen.has(schema)) return schema;
+  seen.add(schema);
+
+  let next = schema;
+  const editable = () => {
+    if (next === schema) next = { ...schema };
+    return next;
+  };
+
+  if (isPlainObject(schema.properties)) {
+    const properties = {};
+    let changed = false;
+    for (const [key, value] of Object.entries(schema.properties)) {
+      const pruned = pruneEmptyStrictObjectSchemas(value, seen);
+      if (pruned === null) {
+        changed = true;
+        continue;
+      }
+      properties[key] = pruned;
+      if (pruned !== value) changed = true;
+    }
+    if (changed) editable().properties = properties;
+  }
+
+  if (isPlainObject(schema.items)) {
+    const items = pruneEmptyStrictObjectSchemas(schema.items, seen);
+    if (items === null) {
+      delete editable().items;
+    } else if (items !== schema.items) {
+      editable().items = items;
+    }
+  }
+
+  if (Array.isArray(schema.anyOf)) {
+    const anyOf = schema.anyOf
+      .map((item) => pruneEmptyStrictObjectSchemas(item, seen))
+      .filter((item) => item !== null);
+    const changed = anyOf.length !== schema.anyOf.length
+      || anyOf.some((item, index) => item !== schema.anyOf[index]);
+    if (changed) {
+      const target = editable();
+      if (anyOf.length > 0) target.anyOf = anyOf;
+      else delete target.anyOf;
+    }
+  }
+
+  if (isPlainObject(schema.$def)) {
+    const defs = {};
+    let changed = false;
+    for (const [key, value] of Object.entries(schema.$def)) {
+      const pruned = pruneEmptyStrictObjectSchemas(value, seen);
+      if (pruned === null) {
+        changed = true;
+        continue;
+      }
+      defs[key] = pruned;
+      if (pruned !== value) changed = true;
+    }
+    if (changed) {
+      const target = editable();
+      if (Object.keys(defs).length > 0) target.$def = defs;
+      else delete target.$def;
+    }
+  }
+
+  const candidate = next;
+  if (candidate.type === "object" || isPlainObject(candidate.properties)) {
+    const properties = isPlainObject(candidate.properties) ? candidate.properties : {};
+    const required = Object.keys(properties);
+    if (required.length === 0) return null;
+    const hasRequired = Array.isArray(candidate.required)
+      && candidate.required.length === required.length
+      && required.every((key) => candidate.required.includes(key));
+    if (!hasRequired) editable().required = required;
+    if (candidate.additionalProperties !== false) editable().additionalProperties = false;
+  }
+
+  return next;
+}
+
 function withStrictToolDefinition(tool) {
   if (!isPlainObject(tool) || tool.type !== "function" || !isPlainObject(tool.function)) {
     return tool;
   }
   const fn = tool.function;
-  const parameters = normalizeStrictSchema(isPlainObject(fn.parameters) ? fn.parameters : { type: "object", properties: {} });
-  if (fn.strict === true && parameters === fn.parameters) return tool;
+  const normalizedParameters = isPlainObject(fn.parameters)
+    ? normalizeStrictSchema(fn.parameters)
+    : null;
+  const parameters = normalizedParameters
+    ? pruneEmptyStrictObjectSchemas(normalizedParameters)
+    : null;
+  if (fn.strict === true && parameters && parameters === fn.parameters) return tool;
+  const { parameters: _parameters, ...restFn } = fn;
   return {
     ...tool,
     function: {
-      ...fn,
+      ...restFn,
       ...(parameters ? { parameters } : {}),
       strict: true,
     },

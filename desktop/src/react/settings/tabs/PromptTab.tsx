@@ -11,9 +11,6 @@ import { renderMarkdownPreview } from '../../utils/markdown';
 import styles from '../Settings.module.css';
 import {
   BUILTIN_SIMPLE_PROMPT_TEMPLATES,
-  DEFAULT_PROMPT_BLOCK_ORDER,
-  SYSTEM_GENERATED_PROMPT_BLOCK_IDS,
-  composePromptFromBlocks,
   normalizePromptComposerConfig,
 } from '../../../../../shared/prompt-composer.js';
 
@@ -61,14 +58,6 @@ type BuiltinSimplePromptTemplate = {
   content: string;
 };
 
-type PromptRuntimeInjections = {
-  workspace: boolean;
-  currentTime: boolean;
-  memory: boolean;
-  appendSystemPrompt: boolean;
-  skills: boolean;
-};
-
 type PromptComposerConfig = {
   enabled: boolean;
   mode: 'blocks' | 'simple';
@@ -78,16 +67,8 @@ type PromptComposerConfig = {
   simplePresets: PromptSimplePreset[];
   blockOverrides: PromptBlockOverride[];
   blocks: PromptBlock[];
-  runtimeInjections: PromptRuntimeInjections;
   routes: PromptRoute[];
   toolOverrides: ToolOverride[];
-};
-
-type PromptSourceBlock = {
-  id: string;
-  label?: string;
-  title?: string;
-  content: string;
 };
 
 type ToolSource = {
@@ -98,7 +79,6 @@ type ToolSource = {
 };
 
 type PromptComposerSource = {
-  promptBlocks: PromptSourceBlock[];
   tools: ToolSource[];
 };
 
@@ -110,81 +90,37 @@ type SystemPromptPreview = {
 };
 
 
-const RUNTIME_INJECTION_ROWS: Array<{
-  key: keyof PromptRuntimeInjections;
-  label: string;
-  hint: string;
-}> = [
-  {
-    key: 'workspace',
-    label: '动态工作空间',
-    hint: '控制主 system.content 中的 Workspace，以及 SDK 末尾的 Current working directory；会话级工作区范围由“会话级追加规则”控制。',
-  },
-  {
-    key: 'currentTime',
-    label: '动态时间',
-    hint: '控制主 system.content 中的 Current date and time / 日期边界说明，以及 SDK 末尾的 Current date。',
-  },
-  {
-    key: 'memory',
-    label: '记忆上下文',
-    hint: '控制记忆使用规则、置顶记忆和长期记忆注入。关闭后不会把已编译记忆写入 system.content；不等于清空记忆。',
-  },
-  {
-    key: 'appendSystemPrompt',
-    label: '会话级追加规则',
-    hint: '控制后台任务规则、工作区范围、模型 provider 追加规则等 SessionCoordinator 追加段。',
-  },
-  {
-    key: 'skills',
-    label: 'Skills 可用列表',
-    hint: '控制 <available_skills> 注入。关闭后模型不会在系统提示词中看到 skill 列表。',
-  },
-];
-
-const SYSTEM_GENERATED_PROMPT_BLOCK_ID_SET = new Set(SYSTEM_GENERATED_PROMPT_BLOCK_IDS);
 const SIMPLE_PROMPT_TEMPLATES = BUILTIN_SIMPLE_PROMPT_TEMPLATES as BuiltinSimplePromptTemplate[];
+const PROMPT_VARIABLES = [
+  '{{userName}}',
+  '{{agentName}}',
+  '{{agentId}}',
+  '{{cwd}}',
+  '{{workspace}}',
+  '{{currentDate}}',
+  '{{currentDateTime}}',
+  '{{userProfile}}',
+  '{{personality}}',
+  '{{pinnedMemory}}',
+  '{{memory}}',
+  '{{skills}}',
+  '{{appendSystemPrompt}}',
+  '{{mood}}',
+];
+const PROMPT_VARIABLE_COPY_TEXT = PROMPT_VARIABLES.join('\n');
+const PROMPT_VARIABLE_HINT = `支持变量：${PROMPT_VARIABLES.join('、')}。`;
 
 function createId(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
 function normalizeDraft(value: unknown): PromptComposerConfig {
-  return normalizePromptComposerConfig(value) as PromptComposerConfig;
+  const normalized = normalizePromptComposerConfig(value) as PromptComposerConfig;
+  return { ...normalized, mode: 'simple' };
 }
 
 function hasOwn(value: object | undefined, key: string) {
   return !!value && Object.prototype.hasOwnProperty.call(value, key);
-}
-
-function isDefaultRoute(id: string) {
-  return id === 'default';
-}
-
-function isSystemGeneratedPromptBlock(id: string) {
-  return SYSTEM_GENERATED_PROMPT_BLOCK_ID_SET.has(id);
-}
-
-function getPromptBlockHint(id: string) {
-  if (id === 'memory-rules') {
-    return '这是记忆使用规则，属于可编辑的 system.content。实际置顶记忆和长期记忆内容会在后面的只读变量块中由系统注入。';
-  }
-  if (id === 'pinned-memory') {
-    return '这是置顶记忆变量，来源于用户主动保存的置顶记忆，只读展示；保存配置不会覆盖它。';
-  }
-  if (id === 'memory') {
-    return '这是长期记忆变量，来源于记忆编译结果，只读展示；后台记忆更新后新建会话会使用新的快照。';
-  }
-  if (id === 'workspace') {
-    return '这是当前工作空间变量，来源于会话 cwd，只读展示；切换工作目录或新建会话时会自动刷新。';
-  }
-  if (id === 'current-time') {
-    return '这是当前时间变量，由系统按时间和时区运行时生成，只读展示；新建会话时会自动刷新。';
-  }
-  if (isSystemGeneratedPromptBlock(id)) {
-    return '这是系统运行时生成的 system.content 片段，只读展示；保存配置不会覆盖它，新建会话时会自动刷新。';
-  }
-  return '这是当前项目实际拆分出的 system.content 片段。保存并新建会话后生效。';
 }
 
 export function PromptTab() {
@@ -193,13 +129,34 @@ export function PromptTab() {
   );
   const showToast = useSettingsStore(s => s.showToast);
   const [draft, setDraft] = useState<PromptComposerConfig>(() => normalizeDraft(settingsConfig?.promptComposer));
-  const [source, setSource] = useState<PromptComposerSource>({ promptBlocks: [], tools: [] });
+  const [source, setSource] = useState<PromptComposerSource>({ tools: [] });
   const [sourceLoading, setSourceLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [preview, setPreview] = useState<SystemPromptPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  const [previewRawMode, setPreviewRawMode] = useState(false);
   const autosaveTimerRef = useRef<number | null>(null);
+
+  const copyPromptVariables = async () => {
+    try {
+      await navigator.clipboard.writeText(PROMPT_VARIABLE_COPY_TEXT);
+      showToast('已复制变量列表', 'success');
+    } catch (err: any) {
+      showToast(`复制失败: ${err?.message || err}`, 'error');
+    }
+  };
+
+  const renderVariableHint = (suffix?: string) => (
+    <div className={styles['prompt-variable-hint-row']}>
+      <span className={`${styles['settings-form-hint']} ${styles['prompt-variable-hint-text']}`}>
+        {PROMPT_VARIABLE_HINT}
+        {suffix}
+        {saving ? ' 正在保存…' : ''}
+      </span>
+      <button type="button" className={styles['prompt-variable-copy-btn']} onClick={copyPromptVariables}>复制</button>
+    </div>
+  );
 
   useEffect(() => {
     setDraft(normalizeDraft(settingsConfig?.promptComposer));
@@ -219,7 +176,6 @@ export function PromptTab() {
         if (ac.signal.aborted) return;
         if (data.error) throw new Error(data.error);
         setSource({
-          promptBlocks: Array.isArray(data.promptBlocks) ? data.promptBlocks : [],
           tools: Array.isArray(data.tools) ? data.tools : [],
         });
       })
@@ -232,14 +188,11 @@ export function PromptTab() {
     return () => ac.abort();
   }, [agentId, showToast]);
 
-  const activeRoute = useMemo(
-    () => draft.routes.find(route => route.id === draft.activeRouteId) || draft.routes[0],
-    [draft.activeRouteId, draft.routes]
-  );
   const previewHtml = useMemo(
     () => preview?.markdown ? renderMarkdownPreview(preview.markdown) : '',
     [preview?.markdown]
   );
+  const previewRawText = preview?.content || preview?.markdown || '';
   const activeBuiltinSimpleTemplate = useMemo(
     () => SIMPLE_PROMPT_TEMPLATES.find(template => template.id === draft.activeSimplePresetId) || null,
     [draft.activeSimplePresetId]
@@ -273,55 +226,6 @@ export function PromptTab() {
 
   const setComposerEnabled = (enabled: boolean) => {
     const nextDraft = normalizeDraft({ ...draft, enabled });
-    setDraft(nextDraft);
-    void saveDraft(nextDraft);
-  };
-
-  const setRuntimeInjection = (key: keyof PromptRuntimeInjections, enabled: boolean) => {
-    const nextDraft = normalizeDraft({
-      ...draft,
-      runtimeInjections: {
-        ...draft.runtimeInjections,
-        [key]: enabled,
-      },
-    });
-    setDraft(nextDraft);
-    void saveDraft(nextDraft);
-  };
-
-  const buildSimpleContentFromBlocks = (baseDraft: PromptComposerConfig = draft) => {
-    const builtInBlocks = source.promptBlocks.map(block => ({ id: block.id, content: block.content }));
-    const runtimeBlockIds = new Set(['workspace', 'memory-rules', 'pinned-memory', 'memory', 'current-time']);
-    const content = composePromptFromBlocks({
-      config: {
-        ...baseDraft,
-        enabled: true,
-        mode: 'blocks',
-        runtimeInjections: {
-          ...baseDraft.runtimeInjections,
-          workspace: false,
-          currentTime: false,
-          memory: false,
-        },
-      },
-      builtInBlocks,
-    });
-    return content || builtInBlocks
-      .filter(block => !runtimeBlockIds.has(block.id))
-      .map(block => block.content)
-      .filter(content => content.trim())
-      .join('\n\n');
-  };
-
-  const setSimpleMode = (simple: boolean) => {
-    const nextDraft = normalizeDraft({
-      ...draft,
-      enabled: simple ? true : draft.enabled,
-      mode: simple ? 'simple' : 'blocks',
-      simpleContent: simple && !draft.simpleContent.trim()
-        ? buildSimpleContentFromBlocks(draft)
-        : draft.simpleContent,
-    });
     setDraft(nextDraft);
     void saveDraft(nextDraft);
   };
@@ -363,7 +267,7 @@ export function PromptTab() {
       index += 1;
       name = `${baseName} ${index}`;
     }
-    const nextPreset = { id, name, content: baseContent || buildSimpleContentFromBlocks(draft) };
+    const nextPreset = { id, name, content: baseContent || '# 角色\n\n在这里写入你的 system.content 模板。' };
     const nextDraft = normalizeDraft({
       ...draft,
       enabled: true,
@@ -426,6 +330,7 @@ export function PromptTab() {
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
+      setPreviewRawMode(false);
       setPreview({
         markdown: typeof data.markdown === 'string' ? data.markdown : '',
         content: typeof data.content === 'string' ? data.content : '',
@@ -437,111 +342,6 @@ export function PromptTab() {
     } finally {
       setPreviewLoading(false);
     }
-  };
-
-  const addBlock = () => {
-    const id = createId('custom');
-    updateDraft({
-      blocks: [
-        ...draft.blocks,
-        { id, title: '新的提示词模块', content: '## 新的提示词模块\n\n在这里写入提示词内容。', enabled: true },
-      ],
-    }, { enableComposer: true });
-  };
-
-  const updateBlock = (id: string, patch: Partial<PromptBlock>) => {
-    updateDraft({ blocks: draft.blocks.map(block => block.id === id ? { ...block, ...patch } : block) }, { enableComposer: true });
-  };
-
-  const deleteBlock = (id: string) => {
-    updateDraft({
-      blocks: draft.blocks.filter(block => block.id !== id),
-      routes: draft.routes.map(route => ({ ...route, blockIds: route.blockIds.filter(blockId => blockId !== id) })),
-    }, { enableComposer: true });
-  };
-
-  const getGlobalBlockOverride = (id: string) => draft.blockOverrides.find(block => block.id === id);
-  const getRouteBlockOverride = (id: string) => activeRoute?.blockOverrides?.find(block => block.id === id);
-  const getBlockOverride = (id: string) => {
-    const routeOverride = getRouteBlockOverride(id);
-    if (routeOverride) return routeOverride;
-    return activeRoute && !isDefaultRoute(activeRoute.id) ? undefined : getGlobalBlockOverride(id);
-  };
-
-  const updateRouteBlockOverride = (routeId: string, id: string, content: string) => {
-    updateDraft({
-      routes: draft.routes.map(route => {
-        if (route.id !== routeId) return route;
-        const blockOverrides = route.blockOverrides || [];
-        const existing = blockOverrides.find(block => block.id === id);
-        return {
-          ...route,
-          blockOverrides: existing
-            ? blockOverrides.map(block => block.id === id ? { ...block, content } : block)
-            : [...blockOverrides, { id, content, enabled: true }],
-        };
-      }),
-    }, { enableComposer: true });
-  };
-
-  const updateBlockOverride = (id: string, content: string) => {
-    if (activeRoute && !isDefaultRoute(activeRoute.id)) {
-      updateRouteBlockOverride(activeRoute.id, id, content);
-      return;
-    }
-    const existing = getGlobalBlockOverride(id);
-    updateDraft({
-      blockOverrides: existing
-        ? draft.blockOverrides.map(block => block.id === id ? { ...block, content } : block)
-        : [...draft.blockOverrides, { id, content, enabled: true }],
-    }, { enableComposer: true });
-  };
-
-  const resetBlockOverride = (id: string) => {
-    if (activeRoute && !isDefaultRoute(activeRoute.id)) {
-      updateDraft({
-        routes: draft.routes.map(route => route.id === activeRoute.id
-          ? { ...route, blockOverrides: (route.blockOverrides || []).filter(block => block.id !== id) }
-          : route),
-      });
-      return;
-    }
-    updateDraft({ blockOverrides: draft.blockOverrides.filter(block => block.id !== id) });
-  };
-
-  const addRoute = () => {
-    const id = createId('route');
-    const usedNames = new Set(draft.routes.map(route => route.name));
-    let index = draft.routes.length + 1;
-    let name = `新的组合路线 ${index}`;
-    while (usedNames.has(name)) {
-      index += 1;
-      name = `新的组合路线 ${index}`;
-    }
-    updateDraft({
-      activeRouteId: id,
-      routes: [
-        ...draft.routes,
-        { id, name, blockIds: [...DEFAULT_PROMPT_BLOCK_ORDER] },
-      ],
-    }, { enableComposer: true });
-  };
-
-  const updateRoute = (id: string, patch: Partial<PromptRoute>) => {
-    updateDraft({ routes: draft.routes.map(route => route.id === id ? { ...route, ...patch } : route) }, { enableComposer: true });
-  };
-
-  const deleteRoute = (id: string) => {
-    if (isDefaultRoute(id)) {
-      showToast('默认路线不能删除', 'error');
-      return;
-    }
-    const routes = draft.routes.filter(route => route.id !== id);
-    if (!routes.length) {
-      showToast('至少保留一条组合路线', 'error');
-      return;
-    }
-    updateDraft({ routes, activeRouteId: draft.activeRouteId === id ? routes[0].id : draft.activeRouteId }, { enableComposer: true });
   };
 
   const getToolOverride = (name: string) => draft.toolOverrides.find(tool => tool.name === name);
@@ -602,210 +402,77 @@ export function PromptTab() {
       <SettingsSection title="Agent 性能调优入口">
         <SettingsRow
           label="调整 system.content 和 tools 描述"
-          hint="简化模式只编辑一份完整 system.content；高级模式可按模块精细编辑。保存后新会话生效，点击“完整预览”可查看实际发送给模型的系统提示词。"
+          hint="直接编辑一份完整 system.content 模板。保存后新会话生效，点击“完整预览”可查看实际发送给模型的系统提示词。"
           control={null}
         />
       </SettingsSection>
 
       <SettingsSection
-        title="组合开关"
+        title="system.content"
         context={<button type="button" className={styles['settings-save-btn-sm']} disabled={previewLoading} onClick={() => void openSystemPromptPreview()}>{previewLoading ? '生成预览中…' : '完整预览'}</button>}
       >
         <SettingsRow
           label="启用自定义 system.content"
-          hint="关闭时完全使用 OpenHanako 默认 system.content；开启后使用下方选择的简化模式或高级分块模式生成 system.content。工具描述覆盖不受这个开关影响。"
+          hint="关闭时完全使用 OpenHanako 默认 system.content；开启后使用下方模板生成 system.content。工具描述覆盖不受这个开关影响。"
           control={<Toggle on={draft.enabled} onChange={setComposerEnabled} />}
         />
-        <SettingsRow
-          label="简化编辑模式"
-          hint="开启后只编辑一个完整 system.content 大文本框；关闭后回到高级分块/路线编辑。运行时注入开关仍然独立生效。"
-          control={<Toggle on={draft.mode === 'simple'} onChange={setSimpleMode} />}
-        />
-        {draft.mode !== 'simple' && (
-          <>
-          <SettingsRow
-          label="当前路线"
-          control={
-            <div className={styles['prompt-editor-header']}>
-              <select
-                className={styles['settings-input']}
-                value={draft.activeRouteId}
-                onChange={(event) => updateDraft({ activeRouteId: event.target.value }, { enableComposer: true })}
-              >
-                {draft.routes.map(route => <option key={route.id} value={route.id}>{route.name}</option>)}
-              </select>
-              <button type="button" className={styles['settings-save-btn-sm']} onClick={addRoute}>新建路线</button>
-              <button
-                type="button"
-                className={styles['prompt-danger-btn']}
-                onClick={() => {
-                  if (activeRoute) deleteRoute(activeRoute.id);
-                }}
-                disabled={!activeRoute || draft.routes.length <= 1 || isDefaultRoute(activeRoute.id)}
-              >
-                删除当前
-              </button>
-            </div>
-          }
-        />
-        <SettingsRow
-          label="路线名称"
-          hint="这里修改的是当前选中的路线名称，底部保存后写入配置。"
-          control={
-            <input
-              className={styles['settings-input']}
-              value={activeRoute?.name || ''}
-              onChange={(event) => {
-                if (activeRoute) updateRoute(activeRoute.id, { name: event.target.value });
-              }}
-              disabled={!activeRoute}
-            />
-          }
-        />
-          </>
-        )}
         {previewError && <div className={styles['prompt-preview-error']}>{previewError}</div>}
       </SettingsSection>
 
-      <SettingsSection title="运行时注入">
-        <SettingsSection.Note>这些内容由系统在新会话创建或请求发送前动态加入。关闭后会从完整预览和新会话系统提示词中移除。</SettingsSection.Note>
-        {RUNTIME_INJECTION_ROWS.map(row => (
-          <SettingsRow
-            key={row.key}
-            label={row.label}
-            hint={row.hint}
-            control={<Toggle on={draft.runtimeInjections[row.key] !== false} onChange={(enabled) => setRuntimeInjection(row.key, enabled)} />}
-          />
-        ))}
-      </SettingsSection>
-
-      {draft.mode === 'simple' ? (
-        <SettingsSection title="简化 system.content">
-          <SettingsSection.Note>下面内容会作为主 system.content。Skills、时间、工作空间、记忆和会话追加规则仍由“运行时注入”开关单独控制。</SettingsSection.Note>
-          <div className={styles['prompt-simple-card']}>
-            <div className={styles['prompt-template-toolbar']}>
-              <div className={styles['prompt-template-picker']}>
-                <label className={styles['settings-form-hint']}>当前模板</label>
-                <select
-                  className={styles['settings-input']}
-                  value={draft.activeSimplePresetId}
-                  onChange={(event) => selectSimplePreset(event.target.value)}
-                >
-                  <optgroup label="内置模板">
-                    {SIMPLE_PROMPT_TEMPLATES.map(template => (
-                      <option key={template.id} value={template.id}>{template.name}</option>
+      <SettingsSection title="system.content 模板">
+        <SettingsSection.Note>下面内容会作为完整 system.content。Skills、时间、工作空间、记忆、MOOD 和会话追加规则都通过变量插入；不写变量就不会注入。</SettingsSection.Note>
+        <div className={styles['prompt-simple-card']}>
+          <div className={styles['prompt-template-toolbar']}>
+            <div className={styles['prompt-template-picker']}>
+              <label className={styles['settings-form-hint']}>当前模板</label>
+              <select
+                className={styles['settings-input']}
+                value={draft.activeSimplePresetId}
+                onChange={(event) => selectSimplePreset(event.target.value)}
+              >
+                <optgroup label="内置模板">
+                  {SIMPLE_PROMPT_TEMPLATES.map(template => (
+                    <option key={template.id} value={template.id}>{template.name}</option>
+                  ))}
+                </optgroup>
+                {draft.simplePresets.length > 0 && (
+                  <optgroup label="自定义模板">
+                    {draft.simplePresets.map(preset => (
+                      <option key={preset.id} value={preset.id}>{preset.name}</option>
                     ))}
                   </optgroup>
-                  {draft.simplePresets.length > 0 && (
-                    <optgroup label="自定义模板">
-                      {draft.simplePresets.map(preset => (
-                        <option key={preset.id} value={preset.id}>{preset.name}</option>
-                      ))}
-                    </optgroup>
-                  )}
-                </select>
-              </div>
-              <div className={styles['prompt-template-actions']}>
-                <button type="button" className={styles['settings-save-btn-sm']} onClick={() => createSimplePreset('# 角色\n\n在这里写入你的 system.content 模板。', '自定义模板')}>新建模板</button>
-                <button type="button" className={styles['settings-save-btn-sm']} onClick={duplicateActiveSimplePreset}>复制当前</button>
-                <button type="button" className={styles['prompt-danger-btn']} onClick={deleteActiveSimplePreset} disabled={!activeCustomSimplePreset}>删除自定义</button>
-              </div>
+                )}
+              </select>
             </div>
-            {activeCustomSimplePreset && (
-              <div className={styles['prompt-template-name-row']}>
-                <label className={styles['settings-form-hint']}>模板名称</label>
-                <input
-                  className={styles['settings-input']}
-                  value={activeCustomSimplePreset.name}
-                  onChange={(event) => updateSimplePresetName(event.target.value)}
-                />
-              </div>
-            )}
-            {activeSimplePresetDescription && (
-              <div className={styles['prompt-template-description']}>{activeSimplePresetDescription}</div>
-            )}
-            <textarea
-              className={`${styles['settings-textarea']} ${styles['prompt-textarea']} ${activeBuiltinSimpleTemplate ? styles['prompt-readonly-textarea'] : ''}`}
-              value={draft.simpleContent}
-              onChange={(event) => updateSimpleContent(event.target.value)}
-              readOnly={!!activeBuiltinSimpleTemplate}
-              spellCheck={false}
-            />
-            <span className={styles['settings-form-hint']}>
-              支持变量：{'{{userName}}'}、{'{{agentName}}'}、{'{{agentId}}'}、{'{{cwd}}'}、{'{{currentDateTime}}'}。
-              {activeBuiltinSimpleTemplate ? '内置模板只读，可复制为自定义模板后编辑。' : '自动保存后新建会话生效。'}
-              {saving ? ' 正在保存…' : ''}
-            </span>
+            <div className={styles['prompt-template-actions']}>
+              <button type="button" className={styles['settings-save-btn-sm']} onClick={() => createSimplePreset('# 角色\n\n在这里写入你的 system.content 模板。', '自定义模板')}>新建模板</button>
+              <button type="button" className={styles['settings-save-btn-sm']} onClick={duplicateActiveSimplePreset}>复制当前</button>
+              <button type="button" className={styles['prompt-danger-btn']} onClick={deleteActiveSimplePreset} disabled={!activeCustomSimplePreset}>删除自定义</button>
+            </div>
           </div>
-        </SettingsSection>
-      ) : (
-        <>
-      <SettingsSection title="内置 system.content 模块">
-        {sourceLoading && <span className={styles['settings-form-hint']}>正在加载当前实际拆分内容…</span>}
-        <div className={styles['prompt-editor-list']}>
-          {source.promptBlocks.map(block => {
-            const override = getBlockOverride(block.id);
-            const value = override ? override.content : block.content;
-            const readOnly = isSystemGeneratedPromptBlock(block.id);
-            return (
-              <div className={styles['prompt-editor-card']} key={block.id}>
-                <div className={styles['prompt-editor-header']}>
-                  <strong>{block.id}</strong>
-                  {readOnly ? (
-                    <span className={`${styles['prompt-readonly-badge']} ${styles['prompt-header-action']}`}>系统生成</span>
-                  ) : (
-                    <button type="button" className={`${styles['settings-save-btn-sm']} ${styles['prompt-header-action']}`} onClick={() => resetBlockOverride(block.id)} disabled={!override}>恢复默认</button>
-                  )}
-                </div>
-                <textarea
-                  className={`${styles['settings-textarea']} ${styles['prompt-textarea']} ${readOnly ? styles['prompt-readonly-textarea'] : ''}`}
-                  value={value}
-                  onChange={(event) => {
-                    if (!readOnly) updateBlockOverride(block.id, event.target.value);
-                  }}
-                  readOnly={readOnly}
-                  spellCheck={false}
-                />
-                <span className={styles['settings-form-hint']}>{getPromptBlockHint(block.id)}</span>
-              </div>
-            );
-          })}
+          {activeCustomSimplePreset && (
+            <div className={styles['prompt-template-name-row']}>
+              <label className={styles['settings-form-hint']}>模板名称</label>
+              <input
+                className={styles['settings-input']}
+                value={activeCustomSimplePreset.name}
+                onChange={(event) => updateSimplePresetName(event.target.value)}
+              />
+            </div>
+          )}
+          {activeSimplePresetDescription && (
+            <div className={styles['prompt-template-description']}>{activeSimplePresetDescription}</div>
+          )}
+          <textarea
+            className={`${styles['settings-textarea']} ${styles['prompt-textarea']} ${activeBuiltinSimpleTemplate ? styles['prompt-readonly-textarea'] : ''}`}
+            value={draft.simpleContent}
+            onChange={(event) => updateSimpleContent(event.target.value)}
+            readOnly={!!activeBuiltinSimpleTemplate}
+            spellCheck={false}
+          />
+          {renderVariableHint(activeBuiltinSimpleTemplate ? '内置模板只读，可复制为自定义模板后编辑。' : '自动保存后新建会话生效。')}
         </div>
       </SettingsSection>
-
-      <SettingsSection
-        title="自定义 system.content 模块"
-        context={<button type="button" className={styles['settings-save-btn-sm']} onClick={addBlock}>新建模块</button>}
-      >
-        {draft.blocks.length === 0 ? (
-          <div className={styles['prompt-hint-card']}>还没有自定义模块。你可以先新建模块，再把模块 ID 加入某条组合路线。</div>
-        ) : (
-          <div className={styles['prompt-editor-list']}>
-            {draft.blocks.map(block => (
-              <div className={styles['prompt-editor-card']} key={block.id}>
-                <div className={styles['prompt-editor-header']}>
-                  <input
-                    className={styles['settings-input']}
-                    value={block.title}
-                    onChange={(event) => updateBlock(block.id, { title: event.target.value })}
-                  />
-                  <Toggle on={block.enabled !== false} onChange={(enabled) => updateBlock(block.id, { enabled })} />
-                  <button type="button" className={styles['prompt-danger-btn']} onClick={() => deleteBlock(block.id)}>删除</button>
-                </div>
-                <textarea
-                  className={`${styles['settings-textarea']} ${styles['prompt-textarea']}`}
-                  value={block.content}
-                  onChange={(event) => updateBlock(block.id, { content: event.target.value })}
-                  spellCheck={false}
-                />
-                <span className={styles['settings-form-hint']}>支持变量：{'{{userName}}'}、{'{{agentName}}'}、{'{{agentId}}'}、{'{{cwd}}'}、{'{{currentDateTime}}'}。</span>
-              </div>
-            ))}
-          </div>
-        )}
-      </SettingsSection>
-        </>
-      )}
 
       <SettingsSection title="工具描述覆盖">
         {sourceLoading && <span className={styles['settings-form-hint']}>正在加载当前工具 schema…</span>}
@@ -865,13 +532,26 @@ export function PromptTab() {
               <div>
                 <h3>系统提示词完整预览</h3>
               </div>
-              <button type="button" className={styles['prompt-preview-close']} onClick={() => setPreview(null)}>✕</button>
+              <div className={styles['prompt-preview-actions']}>
+                <button
+                  type="button"
+                  className={`${styles['prompt-preview-mode-toggle']} ${previewRawMode ? styles['prompt-preview-mode-toggle-active'] : ''}`}
+                  onClick={() => setPreviewRawMode(value => !value)}
+                >
+                  {previewRawMode ? 'Markdown 预览' : '原文'}
+                </button>
+                <button type="button" className={styles['prompt-preview-close']} onClick={() => setPreview(null)}>✕</button>
+              </div>
             </div>
             <div className={styles['prompt-preview-body']}>
-              <div
-                className={`preview-markdown ${styles['prompt-preview-markdown']}`}
-                dangerouslySetInnerHTML={{ __html: previewHtml }}
-              />
+              {previewRawMode ? (
+                <pre className={styles['prompt-preview-raw']}>{previewRawText}</pre>
+              ) : (
+                <div
+                  className={`preview-markdown ${styles['prompt-preview-markdown']}`}
+                  dangerouslySetInnerHTML={{ __html: previewHtml }}
+                />
+              )}
             </div>
           </div>
         </div>,

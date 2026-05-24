@@ -59,6 +59,7 @@ function makeTicker(tmpDir, summaryManagerOverride) {
     configPath: path.join(tmpDir, "config.yaml"),
     factStore: {},
     getResolvedMemoryModel: () => ({ model: "m", provider: "p", api: "openai-completions", api_key: "k", base_url: "http://x" }),
+    automaticEnabled: true,
     sessionDir: path.join(tmpDir, "sessions"),
     memoryMdPath: path.join(tmpDir, "memory.md"),
     todayMdPath: path.join(tmpDir, "today.md"),

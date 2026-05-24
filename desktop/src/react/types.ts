@@ -326,6 +326,7 @@ export interface PlatformApi {
 
   // ── App info ──
   getAppVersion?(): Promise<string>;
+  resetToFreshEnvironment?(): Promise<{ ok: boolean; backupPath?: string }>;
   checkUpdate?(): Promise<{ version: string; downloadUrl: string } | null>;
 
   // ── Auto-update (Windows) ──

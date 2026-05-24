@@ -114,7 +114,7 @@ describe("memory routes", () => {
     const data = await res.json();
 
     expect(res.status).toBe(200);
-    expect(data.willInjectMemory).toBe(true);
+    expect(data.willInjectMemory).toBe(false);
     expect(data.pinned).toEqual([{ id: "pinned:0", index: 0, text: "用户要求置顶的偏好" }]);
     expect(data.compiledSections.find((section) => section.source === "facts").items[0].text).toBe("稳定事实一");
     expect(data.compiledSections.find((section) => section.source === "today").items[0].text).toBe("今天关注记忆系统");

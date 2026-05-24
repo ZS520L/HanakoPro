@@ -19,6 +19,7 @@ vi.mock("../lib/pi-sdk/index.js", () => ({
   SettingsManager: {
     inMemory: vi.fn(() => ({})),
   },
+  formatSkillsForPrompt: vi.fn((skills) => `<available_skills>${skills.map(skill => skill.name).join(",")}</available_skills>`),
 }));
 
 vi.mock("../lib/debug-log.js", () => ({
@@ -154,25 +155,21 @@ describe("SessionCoordinator", () => {
     );
   });
 
-  it("honors prompt runtime injection switches for append prompts and skills", async () => {
+  it("passes append prompts and skills as template variables without SDK auto injection", async () => {
+    const buildSystemPrompt = vi.fn(({ appendSystemPrompt, skillsPrompt }) => [
+      "BASE",
+      ...appendSystemPrompt,
+      skillsPrompt,
+    ].filter(Boolean).join("\n"));
     const agent = {
       id: "hana",
       agentDir: path.join(tempDir, "agents", "hana"),
       sessionDir: path.join(tempDir, "agents", "hana", "sessions"),
       sessionMemoryEnabled: true,
       memoryMasterEnabled: true,
-      config: {
-        promptComposer: {
-          runtimeInjections: {
-            workspace: false,
-            currentTime: false,
-            appendSystemPrompt: false,
-            skills: false,
-          },
-        },
-      },
+      config: {},
       setMemoryEnabled: vi.fn(),
-      buildSystemPrompt: () => "BASE",
+      buildSystemPrompt,
       tools: [],
     };
     const getSkillsForAgent = vi.fn(() => ({ skills: [{ name: "skill-v1" }], diagnostics: [] }));
@@ -211,6 +208,10 @@ describe("SessionCoordinator", () => {
     await coordinator.createSession(null, tempDir, true);
 
     const resourceLoader = createAgentSessionMock.mock.calls[0][0].resourceLoader;
+    expect(buildSystemPrompt).toHaveBeenCalledWith(expect.objectContaining({
+      appendSystemPrompt: expect.arrayContaining(["BASE APPEND"]),
+      skillsPrompt: expect.stringContaining("skill-v1"),
+    }));
     expect(resourceLoader.getAppendSystemPrompt()).toEqual([]);
     expect(resourceLoader.getSkills()).toEqual({ skills: [], diagnostics: [] });
     const extensions = resourceLoader.getExtensions().extensions;
@@ -220,7 +221,7 @@ describe("SessionCoordinator", () => {
       systemPrompt: "BASE\nCurrent date: 2026-05-23\nCurrent working directory: C:/work",
     });
     expect(footerResult.systemPrompt).toBe("BASE");
-    expect(getSkillsForAgent).not.toHaveBeenCalled();
+    expect(getSkillsForAgent).toHaveBeenCalled();
   });
 
   it("passes the frozen experience state into the agent tool snapshot", async () => {
@@ -380,7 +381,7 @@ describe("SessionCoordinator", () => {
     expect(agent.getToolsSnapshot.mock.calls[2][0]).not.toHaveProperty("includeLegacyArtifactTool", true);
   });
 
-  it("threads extra workspace folders into tools, prompt context, and session meta", async () => {
+  it("threads extra workspace folders into tools, prompt variables, and session meta", async () => {
     const sessionFile = path.join(tempDir, "agents", "hana", "sessions", "scope.jsonl");
     const agent = {
       id: "hana",
@@ -390,7 +391,7 @@ describe("SessionCoordinator", () => {
       memoryMasterEnabled: true,
       config: { locale: "zh-CN" },
       setMemoryEnabled: vi.fn(),
-      buildSystemPrompt: () => "BASE",
+      buildSystemPrompt: vi.fn(({ appendSystemPrompt }) => ["BASE", ...appendSystemPrompt].filter(Boolean).join("\n")),
       tools: [{ name: "read" }],
     };
     fs.mkdirSync(agent.sessionDir, { recursive: true });
@@ -446,9 +447,10 @@ describe("SessionCoordinator", () => {
         workspaceFolders: [extra],
       }),
     );
-    const appendPrompt = createAgentSessionMock.mock.calls[0][0].resourceLoader.getAppendSystemPrompt();
-    expect(appendPrompt.join("\n")).toContain("额外文件夹");
-    expect(appendPrompt.join("\n")).toContain(extra);
+    const prompt = createAgentSessionMock.mock.calls[0][0].resourceLoader.getSystemPrompt();
+    expect(prompt).toContain("额外文件夹");
+    expect(prompt).toContain(extra);
+    expect(createAgentSessionMock.mock.calls[0][0].resourceLoader.getAppendSystemPrompt()).toEqual([]);
 
     const meta = JSON.parse(fs.readFileSync(path.join(agent.sessionDir, "session-meta.json"), "utf-8"));
     expect(meta[path.basename(sessionFile)].workspaceFolders).toEqual([extra]);
@@ -471,7 +473,7 @@ describe("SessionCoordinator", () => {
       memoryMasterEnabled: true,
       config: { locale: "zh-CN" },
       setMemoryEnabled: vi.fn(),
-      buildSystemPrompt: () => "BASE",
+      buildSystemPrompt: vi.fn(({ appendSystemPrompt }) => ["BASE", ...appendSystemPrompt].filter(Boolean).join("\n")),
       tools: [],
     };
     fs.mkdirSync(agent.sessionDir, { recursive: true });
@@ -515,9 +517,10 @@ describe("SessionCoordinator", () => {
 
     await coordinator.createSession(null, tempDir, true);
 
-    const appendPrompt = createAgentSessionMock.mock.calls[0][0].resourceLoader.getAppendSystemPrompt();
-    expect(appendPrompt.join("\n")).toContain("如果你使用的是 DeepSeek 模型");
-    expect(appendPrompt.join("\n")).toContain("DeepSeek 输出契约");
+    const prompt = createAgentSessionMock.mock.calls[0][0].resourceLoader.getSystemPrompt();
+    expect(prompt).toContain("如果你使用的是 DeepSeek 模型");
+    expect(prompt).toContain("DeepSeek 输出契约");
+    expect(createAgentSessionMock.mock.calls[0][0].resourceLoader.getAppendSystemPrompt()).toEqual([]);
   });
 
   it("restores the original prompt snapshot instead of rebuilding from current agent state", async () => {
@@ -604,10 +607,8 @@ describe("SessionCoordinator", () => {
 
     const restoreOptions = createAgentSessionMock.mock.calls[1][0];
     expect(restoreOptions.resourceLoader.getSystemPrompt()).toBe("SYSTEM PROMPT V1");
-    const restoredAppend = restoreOptions.resourceLoader.getAppendSystemPrompt().join("\n");
-    expect(restoredAppend).toContain("BASE APPEND V1");
-    expect(restoredAppend).not.toContain("BASE APPEND V2");
-    expect(restoreOptions.resourceLoader.getSkills()).toEqual({ skills: [{ name: "skill-v1" }], diagnostics: [] });
+    expect(restoreOptions.resourceLoader.getAppendSystemPrompt()).toEqual([]);
+    expect(restoreOptions.resourceLoader.getSkills()).toEqual({ skills: [], diagnostics: [] });
     expect(restoreOptions.resourceLoader.getAgentsFiles()).toEqual({ agentsFiles: [{ path: "/AGENTS.md", content: "rules v1" }] });
     expect(restoredSession._baseSystemPrompt).toBe("FINAL PROMPT V1");
     expect(restoredSession.agent.state.systemPrompt).toBe("FINAL PROMPT V1");
@@ -700,7 +701,7 @@ describe("SessionCoordinator", () => {
     expect(createAgentSessionMock.mock.calls[0][0].resourceLoader.getSystemPrompt()).toBe("FROZEN BASE");
   });
 
-  it("stores skill pointers for a session and omits restored skills whose source was deleted", async () => {
+  it("stores skill pointers for prompt variables without SDK skill auto injection", async () => {
     const sessionFile = path.join(tempDir, "agents", "hana", "sessions", "skill-snapshot.jsonl");
     const skillDir = path.join(tempDir, "skills", "stable-skill");
     fs.mkdirSync(path.join(skillDir, "assets"), { recursive: true });
@@ -731,7 +732,7 @@ describe("SessionCoordinator", () => {
       memoryMasterEnabled: true,
       config: { locale: "zh-CN" },
       setMemoryEnabled: vi.fn(),
-      buildSystemPrompt: () => "BASE",
+      buildSystemPrompt: vi.fn(({ skillsPrompt }) => ["BASE", skillsPrompt].filter(Boolean).join("\n")),
       tools: [],
     };
     fs.mkdirSync(agent.sessionDir, { recursive: true });
@@ -793,7 +794,11 @@ describe("SessionCoordinator", () => {
     };
 
     await coordinator.createSession(sessionMgr, tempDir, true);
-    const freshSkill = createAgentSessionMock.mock.calls[0][0].resourceLoader.getSkills().skills[0];
+    const freshOptions = createAgentSessionMock.mock.calls[0][0];
+    expect(freshOptions.resourceLoader.getSystemPrompt()).toContain("stable-skill");
+    expect(freshOptions.resourceLoader.getSkills()).toEqual({ skills: [], diagnostics: [] });
+    const meta = JSON.parse(fs.readFileSync(path.join(agent.sessionDir, "session-meta.json"), "utf-8"));
+    const freshSkill = meta[path.basename(sessionFile)].promptSnapshot.skillsResult.skills[0];
     expect(freshSkill.filePath).toBe(skill.filePath);
     expect(freshSkill.runtimeIdentity).toMatchObject({
       kind: "skill_pointer",
@@ -807,15 +812,7 @@ describe("SessionCoordinator", () => {
     fs.rmSync(skillDir, { recursive: true, force: true });
 
     await coordinator.createSession(sessionMgr, tempDir, true, null, { restore: true });
-    const restoredSkills = createAgentSessionMock.mock.calls[1][0].resourceLoader.getSkills();
-    expect(restoredSkills.skills).toEqual([]);
-    expect(restoredSkills.diagnostics).toEqual([
-      expect.objectContaining({
-        type: "warning",
-        message: 'skill "stable-skill" source is no longer available',
-        path: skill.filePath,
-      }),
-    ]);
+    expect(createAgentSessionMock.mock.calls[1][0].resourceLoader.getSkills()).toEqual({ skills: [], diagnostics: [] });
   });
 
   it("restores frozen append prompts so provider prompt patches survive cold restore", async () => {
@@ -834,7 +831,7 @@ describe("SessionCoordinator", () => {
       memoryMasterEnabled: true,
       config: { locale: "zh-CN" },
       setMemoryEnabled: vi.fn(),
-      buildSystemPrompt: () => "BASE",
+      buildSystemPrompt: vi.fn(({ appendSystemPrompt }) => ["BASE", ...appendSystemPrompt].filter(Boolean).join("\n")),
       tools: [],
     };
     fs.mkdirSync(agent.sessionDir, { recursive: true });
@@ -907,10 +904,11 @@ describe("SessionCoordinator", () => {
       { restore: true },
     );
 
-    const appendPrompt = createAgentSessionMock.mock.calls[1][0].resourceLoader.getAppendSystemPrompt().join("\n");
-    expect(appendPrompt).toContain("BASE APPEND V1");
-    expect(appendPrompt).toContain("DeepSeek 输出契约");
-    expect(appendPrompt).not.toContain("BASE APPEND V2");
+    const restoredPrompt = createAgentSessionMock.mock.calls[1][0].resourceLoader.getSystemPrompt();
+    expect(restoredPrompt).toContain("BASE APPEND V1");
+    expect(restoredPrompt).toContain("DeepSeek 输出契约");
+    expect(restoredPrompt).not.toContain("BASE APPEND V2");
+    expect(createAgentSessionMock.mock.calls[1][0].resourceLoader.getAppendSystemPrompt()).toEqual([]);
   });
 
   it("does not add the DeepSeek prompt patch when a non-DeepSeek session later switches models", async () => {

@@ -23,6 +23,7 @@ import * as mimo from "./provider-compat/mimo.js";
 import * as qwen from "./provider-compat/qwen.js";
 import * as openaiVideoUrl from "./provider-compat/openai-video-url.js";
 import * as anthropic from "./provider-compat/anthropic.js";
+import * as spark from "./provider-compat/spark.js";
 import { normalizeImplicitOutputBudget } from "./provider-compat/output-budget.js";
 import {
   getReasoningProfile as getDeclaredReasoningProfile,
@@ -33,7 +34,7 @@ import {
  * 子模块注册表。顺序敏感：first-match-wins。
  * 新 provider 默认加在末尾；只有当模块的 matches 是另一模块子集（更具体规则）时才前置。
  */
-const PROVIDER_MODULES = [deepseek, mimo, qwen, openaiVideoUrl, anthropic];
+const PROVIDER_MODULES = [deepseek, mimo, qwen, openaiVideoUrl, anthropic, spark];
 
 function lower(value) {
   return typeof value === "string" ? value.toLowerCase() : "";

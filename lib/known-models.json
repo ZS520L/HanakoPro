@@ -6352,6 +6352,38 @@
       "image": true
     }
   },
+  "spark": {
+    "4.0Ultra": {
+      "name": "Spark 4.0 Ultra",
+      "context": 131072,
+      "maxOutput": 8192
+    },
+    "max-32k": {
+      "name": "Spark Max 32K",
+      "context": 32768,
+      "maxOutput": 8192
+    },
+    "generalv3.5": {
+      "name": "Spark Max",
+      "context": 8192,
+      "maxOutput": 8192
+    },
+    "pro-128k": {
+      "name": "Spark Pro 128K",
+      "context": 131072,
+      "maxOutput": 8192
+    },
+    "generalv3": {
+      "name": "Spark Pro",
+      "context": 8192,
+      "maxOutput": 8192
+    },
+    "lite": {
+      "name": "Spark Lite",
+      "context": 8192,
+      "maxOutput": 4096
+    }
+  },
   "openai-codex-oauth": {
     "gpt-image-2": {
       "name": "GPT Image 2",

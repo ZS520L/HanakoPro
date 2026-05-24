@@ -828,7 +828,16 @@
       "restoreBtn": "Restore",
       "noBackups": "No backups yet",
       "restoreSuccess": "Restored",
-      "restoreFailed": "Restore failed"
+      "restoreFailed": "Restore failed",
+      "dangerZone": "Danger Zone",
+      "resetFresh": "Reset to a fresh environment",
+      "resetFreshDesc": "Clear the current HanakoPro configuration and chat history, then restart into first-run setup. The current data directory will be moved to a backup first.",
+      "resetFreshWarning": "This makes the app start as if it was newly installed. Make sure you have saved anything you need to keep.",
+      "resetFreshBtn": "Clear and restart",
+      "resetFreshConfirm": "Clear the current HanakoPro configuration and chat history, then restart as a fresh environment? The current data directory will be moved to a backup first.",
+      "resetFreshSecondConfirm": "Confirm again: the app will stop the service, back up the current data directory, and restart into first-run setup. Continue?",
+      "resetFreshRestarting": "Restarting...",
+      "resetFreshFailed": "Reset failed"
     },
     "me": {
       "title": "Me",

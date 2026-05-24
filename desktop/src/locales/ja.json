@@ -822,7 +822,16 @@
       "restoreBtn": "復元",
       "noBackups": "バックアップはまだありません",
       "restoreSuccess": "復元しました",
-      "restoreFailed": "復元に失敗しました"
+      "restoreFailed": "復元に失敗しました",
+      "dangerZone": "危険な操作",
+      "resetFresh": "新しい環境としてリセット",
+      "resetFreshDesc": "現在の HanakoPro 設定とチャット履歴を消去し、再起動後に初回セットアップへ戻します。現在のデータディレクトリは先にバックアップへ移動されます。",
+      "resetFreshWarning": "この操作を行うと、アプリは新規インストール時のように起動します。必要な情報を保存済みであることを確認してください。",
+      "resetFreshBtn": "消去して再起動",
+      "resetFreshConfirm": "現在の HanakoPro 設定とチャット履歴を消去し、新しい環境として再起動しますか？現在のデータディレクトリは先にバックアップへ移動されます。",
+      "resetFreshSecondConfirm": "再確認：サービスを停止し、現在のデータディレクトリをバックアップしてから、初回セットアップへ再起動します。続行しますか？",
+      "resetFreshRestarting": "再起動中...",
+      "resetFreshFailed": "リセットに失敗しました"
     },
     "me": {
       "title": "自分",

@@ -60,6 +60,13 @@ describe('ModelSelector', () => {
     expect(screen.getByRole('button', { name: /model.notSelected/ })).toBeTruthy();
   });
 
+  it('does not present idle load state as perpetual model loading', () => {
+    render(<ModelSelector models={[]} loadState="idle" />);
+
+    expect(screen.queryByRole('button', { name: /model.loading/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /model.noneConfigured/ })).toBeTruthy();
+  });
+
   it('does not open the model menu while the session is streaming', () => {
     render(<ModelSelector models={[{ ...models[0], isCurrent: true }]} isStreaming />);
 

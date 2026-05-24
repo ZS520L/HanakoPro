@@ -41,6 +41,7 @@ export function SecurityTab() {
 
   const [checkpoints, setCheckpoints] = useState<Checkpoint[]>([]);
   const [loading, setLoading] = useState(false);
+  const [resetting, setResetting] = useState(false);
 
   const handleSandboxToggle = useCallback(async (on: boolean) => {
     await autoSaveConfig({ sandbox: on }, { silent: true });
@@ -101,6 +102,23 @@ export function SecurityTab() {
       }
     } catch {
       showToast(t('settings.security.restoreFailed'), 'error');
+    }
+  }, [showToast]);
+
+  const handleResetToFreshEnvironment = useCallback(async () => {
+    if (!window.hana?.resetToFreshEnvironment) return;
+    const firstConfirm = window.confirm(t('settings.security.resetFreshConfirm'));
+    if (!firstConfirm) return;
+    const secondConfirm = window.confirm(t('settings.security.resetFreshSecondConfirm'));
+    if (!secondConfirm) return;
+
+    setResetting(true);
+    try {
+      await window.hana.resetToFreshEnvironment();
+      showToast(t('settings.security.resetFreshRestarting'), 'success');
+    } catch (err) {
+      setResetting(false);
+      showToast(`${t('settings.security.resetFreshFailed')}: ${err instanceof Error ? err.message : String(err)}`, 'error');
     }
   }, [showToast]);
 
@@ -208,6 +226,27 @@ export function SecurityTab() {
             </ExpandableRow>
           </>
         )}
+      </SettingsSection>
+
+      <SettingsSection title={t('settings.security.dangerZone')}>
+        <SettingsSection.Warning>
+          {t('settings.security.resetFreshWarning')}
+        </SettingsSection.Warning>
+        <SettingsRow
+          label={t('settings.security.resetFresh')}
+          hint={t('settings.security.resetFreshDesc')}
+          hintVariant="warn"
+          control={
+            <button
+              type="button"
+              className={styles['prompt-danger-btn']}
+              onClick={handleResetToFreshEnvironment}
+              disabled={resetting || !window.hana?.resetToFreshEnvironment}
+            >
+              {resetting ? t('settings.security.resetFreshRestarting') : t('settings.security.resetFreshBtn')}
+            </button>
+          }
+        />
       </SettingsSection>
     </div>
   );

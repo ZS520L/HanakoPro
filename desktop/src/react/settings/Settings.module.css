@@ -588,6 +588,32 @@
     word-break: break-all;
 }
 
+.prompt-preview-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.prompt-preview-mode-toggle {
+    height: 30px;
+    padding: 0 12px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    color: var(--text-muted);
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.72rem;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.prompt-preview-mode-toggle:hover,
+.prompt-preview-mode-toggle-active {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+}
+
 .prompt-preview-close {
     width: 30px;
     height: 30px;
@@ -634,6 +660,21 @@
 
 .prompt-preview-markdown code {
     font-family: var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+}
+
+.prompt-preview-raw {
+    min-height: 100%;
+    box-sizing: border-box;
+    margin: 0;
+    padding: 18px 22px 56px;
+    color: var(--text);
+    background: transparent;
+    font-family: var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace);
+    font-size: 0.82rem;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    user-select: text;
 }
 
 .prompt-hint-card {
@@ -706,6 +747,40 @@
     min-height: 230px;
 }
 
+.prompt-variable-hint-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    margin: 12px calc(-1 * var(--space-md)) 0;
+    padding: 12px var(--space-md) 0;
+    border-top: 1px solid var(--border);
+}
+
+.prompt-variable-hint-text {
+    flex: 1;
+    min-width: 0;
+}
+
+.prompt-variable-copy-btn {
+    flex: 0 0 auto;
+    padding: 3px 8px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.68rem;
+    line-height: 1.2;
+    cursor: pointer;
+    transition: color var(--duration-fast) var(--ease-out), border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+
+.prompt-variable-copy-btn:hover {
+    color: var(--accent);
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg-card));
+}
+
 .prompt-textarea {
     min-height: 150px;
     resize: vertical;
@@ -735,6 +810,11 @@
 .prompt-danger-btn:hover {
     background: color-mix(in srgb, #dc5a50 14%, transparent);
     border-color: rgba(220, 90, 80, 0.48);
+}
+
+.prompt-danger-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
 }
 
 .prompt-route-active {

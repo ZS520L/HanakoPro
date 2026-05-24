@@ -13,6 +13,7 @@
 import fs from "fs";
 import os from "os";
 import path from "path";
+import { fileURLToPath } from "url";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../lib/memory/memory-ticker.js", () => ({
@@ -26,10 +27,14 @@ vi.mock("../lib/memory/memory-ticker.js", () => ({
     notifyPromoted: vi.fn().mockResolvedValue(undefined),
     flushSession: vi.fn().mockResolvedValue(undefined),
     getHealthStatus: vi.fn().mockReturnValue({}),
+    isAutomaticEnabled: vi.fn().mockReturnValue(false),
   }),
 }));
 
 import { Agent } from "../core/agent.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 function bootstrapAgentDir(rootDir) {
   const agentsDir = path.join(rootDir, "agents");
@@ -54,6 +59,10 @@ function bootstrapAgentDir(rootDir) {
       "  chat:",
       "    id: gpt-4",
       "    provider: openai",
+      "promptComposer:",
+      "  enabled: true",
+      "  mode: simple",
+      '  simpleContent: "{{pinnedMemory}}"',
     ].join("\n"),
     "utf-8",
   );
@@ -70,7 +79,7 @@ function makeAgent(agentsDir, rootDir) {
     id: "test-agent",
     agentsDir,
     userDir: path.join(rootDir, "user"),
-    productDir: path.resolve(path.dirname(new URL(import.meta.url).pathname), "..", "lib"),
+    productDir: path.resolve(__dirname, "..", "lib"),
   });
 }
 
@@ -91,14 +100,14 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     const agent = makeAgent(agentsDir, tmpDir);
     await agent.init(() => {});
     const before = agent.systemPrompt;
-    expect(before).toContain("MEMORY_MD_BEACON");
+    expect(before).not.toContain("MEMORY_MD_BEACON");
     expect(before).toContain("PINNED_MEMORY_BEACON");
 
     agent.setMemoryEnabled(false);
     expect(agent.sessionMemoryEnabled).toBe(false);
     // 关键：setMemoryEnabled 不应该重建 _systemPrompt
     expect(agent.systemPrompt).toBe(before);
-    expect(agent.systemPrompt).toContain("MEMORY_MD_BEACON");
+    expect(agent.systemPrompt).toContain("PINNED_MEMORY_BEACON");
 
     await agent.dispose();
   });
@@ -106,7 +115,8 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
   it("setMemoryMasterEnabled(false) 让 systemPrompt 反映「不带记忆」", async () => {
     const agent = makeAgent(agentsDir, tmpDir);
     await agent.init(() => {});
-    expect(agent.systemPrompt).toContain("MEMORY_MD_BEACON");
+    expect(agent.systemPrompt).not.toContain("MEMORY_MD_BEACON");
+    expect(agent.systemPrompt).toContain("PINNED_MEMORY_BEACON");
 
     agent.setMemoryMasterEnabled(false);
     expect(agent.memoryMasterEnabled).toBe(false);
@@ -114,7 +124,8 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     expect(agent.systemPrompt).not.toContain("PINNED_MEMORY_BEACON");
 
     agent.setMemoryMasterEnabled(true);
-    expect(agent.systemPrompt).toContain("MEMORY_MD_BEACON");
+    expect(agent.systemPrompt).not.toContain("MEMORY_MD_BEACON");
+    expect(agent.systemPrompt).toContain("PINNED_MEMORY_BEACON");
 
     await agent.dispose();
   });
@@ -128,7 +139,7 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     expect(agent.sessionMemoryEnabled).toBe(false);
 
     // 这是核心：非 session 路径拿的就是 systemPrompt cache
-    expect(agent.systemPrompt).toContain("MEMORY_MD_BEACON");
+    expect(agent.systemPrompt).not.toContain("MEMORY_MD_BEACON");
     expect(agent.systemPrompt).toContain("PINNED_MEMORY_BEACON");
 
     await agent.dispose();
@@ -141,13 +152,53 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     const onSnapshot = agent.buildSystemPrompt({ forceMemoryEnabled: true });
     const offSnapshot = agent.buildSystemPrompt({ forceMemoryEnabled: false });
 
-    expect(onSnapshot).toContain("MEMORY_MD_BEACON");
+    expect(onSnapshot).not.toContain("MEMORY_MD_BEACON");
+    expect(onSnapshot).toContain("PINNED_MEMORY_BEACON");
     expect(offSnapshot).not.toContain("MEMORY_MD_BEACON");
+    expect(offSnapshot).not.toContain("PINNED_MEMORY_BEACON");
 
     await agent.dispose();
   });
 
-  it("系统 prompt 用一句话把工作空间定义为 cwd", async () => {
+  it("does not inject compiled memory into system prompt", async () => {
+    const agent = makeAgent(agentsDir, tmpDir);
+    fs.writeFileSync(
+      path.join(agent.agentDir, "memory", "memory.md"),
+      [
+        "## Key facts",
+        "",
+        "NON_PINNED_MEMORY_BEACON",
+        "",
+        "## Today",
+        "",
+        "- 今天的非置顶记忆",
+        "",
+        "## Earlier this week",
+        "",
+        "- 本周的非置顶记忆",
+        "",
+        "## Long-term context",
+        "",
+        "- 长期的非置顶记忆",
+        "",
+      ].join("\n"),
+      "utf-8",
+    );
+
+    await agent.init(() => {});
+
+    expect(agent.systemPrompt).toContain("PINNED_MEMORY_BEACON");
+    expect(agent.systemPrompt).not.toContain("NON_PINNED_MEMORY_BEACON");
+    expect(agent.systemPrompt).not.toContain("The following are memories accumulated from past conversations.");
+    expect(agent.systemPrompt).not.toContain("## Key facts");
+    expect(agent.systemPrompt).not.toContain("## Today");
+    expect(agent.systemPrompt).not.toContain("## Earlier this week");
+    expect(agent.systemPrompt).not.toContain("## Long-term context");
+
+    await agent.dispose();
+  });
+
+  it("workspace 模板变量展开为 cwd 上下文", async () => {
     const agent = makeAgent(agentsDir, tmpDir);
     await agent.init(() => {});
     agent._config.locale = "zh-CN";
@@ -155,13 +206,40 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     const prompt = agent.buildSystemPrompt({
       forceMemoryEnabled: false,
       cwdOverride: "/workspace/Desktop/project-hana",
+      promptComposer: {
+        enabled: true,
+        mode: "simple",
+        simpleContent: "{{workspace}}",
+      },
     });
 
-    expect(prompt).toContain("## 工作空间");
-    expect(prompt).toContain("用户所说的「工作空间」指的是当前工作目录（cwd）。");
     expect(prompt).toContain("当前工作目录：/workspace/Desktop/project-hana");
+    expect(prompt).toContain("用户提到的文件、目录默认在当前工作目录下查找。");
+    expect(prompt).not.toContain("## 工作空间");
     expect(prompt).not.toContain("## 书桌");
     expect(prompt).not.toContain("系统桌面");
+
+    await agent.dispose();
+  });
+
+  it("mood 模板变量只在显式引用时进入 system prompt", async () => {
+    const agent = makeAgent(agentsDir, tmpDir);
+    await agent.init(() => {});
+
+    expect(agent.systemPrompt).not.toContain("<mood>");
+
+    const prompt = agent.buildSystemPrompt({
+      promptComposer: {
+        enabled: true,
+        mode: "simple",
+        simpleContent: "{{mood}}",
+      },
+    });
+
+    expect(prompt).toContain("MOOD");
+    expect(prompt).toContain("<mood>");
+    expect(prompt).toContain("Vibe:");
+    expect(prompt).toContain("Sparks:");
 
     await agent.dispose();
   });
@@ -178,7 +256,7 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     });
     await agent.init(() => {});
 
-    const prompt = agent.buildSystemPrompt({ forceMemoryEnabled: false });
+    const prompt = agent.buildSystemPrompt({ forceMemoryEnabled: false, promptComposer: { enabled: true, mode: "blocks" } });
 
     expect(prompt).toContain("Desktop App Control");
     expect(prompt).toContain("computer");
@@ -202,7 +280,7 @@ describe("agent.systemPrompt: master / per-session 解耦", () => {
     await agent.init(() => {});
 
     const toolNames = agent.getToolsSnapshot({ forceMemoryEnabled: false }).map((tool) => tool.name);
-    const prompt = agent.buildSystemPrompt({ forceMemoryEnabled: false });
+    const prompt = agent.buildSystemPrompt({ forceMemoryEnabled: false, promptComposer: { enabled: true, mode: "blocks" } });
 
     expect(toolNames).not.toContain("computer");
     expect(prompt).not.toContain("Desktop App Control");

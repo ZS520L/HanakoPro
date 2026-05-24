@@ -24,8 +24,6 @@ import {
 import { splitByScope, injectGlobalFields } from '../../shared/config-scope.js';
 import { mergeWorkspaceHistory, normalizeWorkspacePath } from "../../shared/workspace-history.js";
 import { resolveAgent, resolveAgentStrict, AgentNotFoundError } from "../utils/resolve-agent.js";
-import { formatSkillsForPrompt } from "../../lib/pi-sdk/index.js";
-import { getPromptRuntimeInjections } from "../../shared/prompt-composer.js";
 import {
   buildInlineProviderCredentialUpdate,
   clearInlineProviderCredentialFields,
@@ -249,18 +247,10 @@ export function createConfigRoute(engine) {
   });
 
   // ── System Prompt（只读，供 DevTools 查看）──
-  // 注意：agent.systemPrompt 不含 skills 块（#399 修复后由 SDK 内部统一注入），
-  // 这里手动拼接以保持开发者视图与 SDK 实际发送给 LLM 的 prompt 一致。
-
   route.get("/system-prompt", async (c) => {
     try {
       const agent = resolveAgent(engine, c);
-      let content = agent.systemPrompt || "";
-      const enabledSkills = agent.enabledSkills || [];
-      const runtimeInjections = getPromptRuntimeInjections(agent.config?.promptComposer);
-      if (runtimeInjections.skills !== false && enabledSkills.length > 0) {
-        content += formatSkillsForPrompt(enabledSkills);
-      }
+      const content = agent.systemPrompt || "";
       return c.json({ content });
     } catch (err) {
       return c.json({ error: err.message }, 500);
@@ -470,7 +460,6 @@ export function createConfigRoute(engine) {
       const pinnedPath = path.join(agent.agentDir, "pinned.md");
       const pinnedRaw = await readTextIfExists(pinnedPath);
       const compiledRaw = await readTextIfExists(agent.memoryMdPath);
-      const runtimeInjections = getPromptRuntimeInjections(agent.config?.promptComposer);
       const compiledSections = [];
       for (const meta of COMPILED_MEMORY_SOURCES) {
         const content = await readTextIfExists(path.join(memoryDir, meta.file));
@@ -491,12 +480,11 @@ export function createConfigRoute(engine) {
       const hasCompiledMemory = compiledSections.some((section) => section.items.length > 0);
       const hasPinnedMemory = pinned.length > 0;
       const memoryMasterEnabled = agent.memoryMasterEnabled !== false;
-      const promptRuntimeMemoryEnabled = runtimeInjections.memory !== false;
       return c.json({
         agentId: agent.id,
         memoryMasterEnabled,
-        promptRuntimeMemoryEnabled,
-        willInjectMemory: memoryMasterEnabled && promptRuntimeMemoryEnabled && (hasCompiledMemory || hasPinnedMemory),
+        promptRuntimeMemoryEnabled: false,
+        willInjectMemory: false,
         hasCompiledMemory,
         hasPinnedMemory,
         pinned,

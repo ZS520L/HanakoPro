@@ -74,7 +74,7 @@ function writeResetMarker(memoryDir, resetAt) {
   fs.writeFileSync(path.join(memoryDir, "reset.json"), JSON.stringify({ compiledResetAt: resetAt }, null, 2), "utf-8");
 }
 
-function makeTicker(tmpDir, isSessionMemoryEnabled) {
+function makeTicker(tmpDir, isSessionMemoryEnabled, options = {}) {
   const summaryManager = {
     rollingSummary: vi.fn().mockResolvedValue("summary"),
     getSummary: vi.fn().mockReturnValue(null),
@@ -88,6 +88,7 @@ function makeTicker(tmpDir, isSessionMemoryEnabled) {
     getResolvedMemoryModel: () => ({ model: "test-model", provider: "test", api: "openai-completions", api_key: "test-key", base_url: "http://localhost:1234" }),
     getMemoryMasterEnabled: () => true,
     isSessionMemoryEnabled,
+    automaticEnabled: options.automaticEnabled ?? true,
     onCompiled: vi.fn(),
     sessionDir: path.join(tmpDir, "sessions"),
     memoryDir,
@@ -122,6 +123,43 @@ describe("memory ticker respects session-level memory toggle", () => {
 
     ticker.notifyTurn(sessionPath);
     await ticker.notifySessionEnd(sessionPath);
+
+    expect(summaryManager.rollingSummary).not.toHaveBeenCalled();
+    expect(compileToday).not.toHaveBeenCalled();
+    expect(assemble).not.toHaveBeenCalled();
+  });
+
+  it("keeps all memory-ticker automatic paths disabled by default", async () => {
+    const summaryManager = {
+      rollingSummary: vi.fn().mockResolvedValue("summary"),
+      getSummary: vi.fn().mockReturnValue(null),
+    };
+    const memoryDir = path.join(tmpDir, "memory");
+    const ticker = createMemoryTicker({
+      summaryManager,
+      configPath: path.join(tmpDir, "config.yaml"),
+      factStore: {},
+      getResolvedMemoryModel: () => ({ model: "m", provider: "p", api: "openai-completions", api_key: "k", base_url: "http://x" }),
+      getMemoryMasterEnabled: () => true,
+      isSessionMemoryEnabled: () => true,
+      onCompiled: vi.fn(),
+      sessionDir: path.join(tmpDir, "sessions"),
+      memoryDir,
+      memoryMdPath: path.join(memoryDir, "memory.md"),
+      todayMdPath: path.join(memoryDir, "today.md"),
+      weekMdPath: path.join(memoryDir, "week.md"),
+      longtermMdPath: path.join(memoryDir, "longterm.md"),
+      factsMdPath: path.join(memoryDir, "facts.md"),
+    });
+
+    expect(ticker.isAutomaticEnabled()).toBe(false);
+    ticker.start();
+    ticker.notifyTurn(sessionPath);
+    await ticker.notifySessionEnd(sessionPath);
+    await ticker.tick();
+    ticker.triggerNow();
+    await ticker.notifyPromoted(sessionPath);
+    await ticker.flushSession(sessionPath);
 
     expect(summaryManager.rollingSummary).not.toHaveBeenCalled();
     expect(compileToday).not.toHaveBeenCalled();
@@ -166,6 +204,7 @@ describe("memory ticker respects session-level memory toggle", () => {
       getResolvedMemoryModel: () => ({ model: "m", provider: "p", api: "openai-completions", api_key: "k", base_url: "http://x" }),
       getMemoryMasterEnabled: () => true,
       isSessionMemoryEnabled: () => true,
+      automaticEnabled: true,
       onCompiled: vi.fn(),
       sessionDir: path.join(tmpDir, "sessions"),
       memoryDir,

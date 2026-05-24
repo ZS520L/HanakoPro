@@ -25,14 +25,20 @@ export function showError(message: string): void {
 
 // ── 模型加载 ──
 
+let modelLoadRequestId = 0;
+const MODEL_LOAD_TIMEOUT_MS = 10_000;
+
 export async function loadModels(): Promise<void> {
+  const requestId = ++modelLoadRequestId;
   useStore.setState({ modelsLoadState: 'loading' });
   try {
-    const res = await hanaFetch('/api/models');
+    const res = await hanaFetch('/api/models', { timeout: MODEL_LOAD_TIMEOUT_MS });
     const data = await res.json();
+    if (requestId !== modelLoadRequestId) return;
+    if (data?.error) throw new Error(String(data.error));
     const { pendingNewSession } = useStore.getState();
     const activeModel = data.activeModel;
-    let models = data.models || [];
+    let models = Array.isArray(data.models) ? data.models : [];
 
     // 非 pending 状态：用 session 实际绑定的 model 重写 isCurrent 标记
     // pending 状态：保持 API 返回的 isCurrent（跟 agent Chat model 走）
@@ -49,7 +55,9 @@ export async function loadModels(): Promise<void> {
       currentModel: currentModelObj ? { id: currentModelObj.id, provider: currentModelObj.provider } : null,
       modelsLoadState: models.length > 0 ? 'ready' : 'empty',
     });
-  } catch {
+  } catch (err) {
+    if (requestId !== modelLoadRequestId) return;
+    console.warn('[models] load failed:', err);
     useStore.setState({ modelsLoadState: 'error' });
   }
 }

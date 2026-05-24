@@ -353,6 +353,25 @@ describe("builtin default models", () => {
     expect(reg.get("gemini").baseUrl).toBe("https://generativelanguage.googleapis.com/v1beta");
     expect(reg.get("gemini").api).toBe("google-generative-ai");
   });
+
+  it("registers Spark as an OpenAI-compatible built-in provider with Spark model IDs", () => {
+    writeAddedModels({});
+    const reg = new ProviderRegistry(tmpDir);
+    expect(reg.get("spark")).toMatchObject({
+      displayName: "讯飞星火 (Spark)",
+      authType: "api-key",
+      baseUrl: "https://spark-api-open.xf-yun.com/v1",
+      api: "openai-completions",
+    });
+    expect(reg.getDefaultModels("spark")).toEqual([
+      "4.0Ultra",
+      "max-32k",
+      "generalv3.5",
+      "pro-128k",
+      "generalv3",
+      "lite",
+    ]);
+  });
 });
 
 // ── getProviderModels ────────────────────────────────────────────────────────

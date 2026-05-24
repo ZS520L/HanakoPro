@@ -62,6 +62,7 @@ function makeTicker(tmpDir) {
     configPath: path.join(tmpDir, "config.yaml"),
     factStore: {},
     getResolvedMemoryModel: () => ({ model: "test-model", provider: "test", api: "openai-completions", api_key: "test-key", base_url: "http://localhost:1234" }),
+    automaticEnabled: true,
     onCompiled: vi.fn(),
     sessionDir: path.join(tmpDir, "sessions"),
     memoryMdPath: path.join(tmpDir, "memory.md"),

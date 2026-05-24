@@ -42,14 +42,6 @@ export type BuiltinSimplePromptTemplate = {
   content: string;
 };
 
-export type PromptRuntimeInjections = {
-  workspace: boolean;
-  currentTime: boolean;
-  memory: boolean;
-  appendSystemPrompt: boolean;
-  skills: boolean;
-};
-
 export type PromptComposerConfig = {
   enabled: boolean;
   mode: "blocks" | "simple";
@@ -59,7 +51,6 @@ export type PromptComposerConfig = {
   simplePresets: PromptSimplePreset[];
   blockOverrides: PromptComposerBlockOverride[];
   blocks: PromptComposerBlock[];
-  runtimeInjections: PromptRuntimeInjections;
   routes: PromptComposerRoute[];
   toolOverrides: PromptComposerToolOverride[];
 };
@@ -72,14 +63,12 @@ export type BuiltinPromptBlockMeta = {
 
 export const DEFAULT_PROMPT_BLOCK_ORDER: string[];
 export const SYSTEM_GENERATED_PROMPT_BLOCK_IDS: string[];
-export const DEFAULT_RUNTIME_INJECTIONS: PromptRuntimeInjections;
 export const DEFAULT_SIMPLE_PROMPT_TEMPLATE_ID: string;
 export const BUILTIN_SIMPLE_PROMPT_TEMPLATES: BuiltinSimplePromptTemplate[];
 export const PROMPT_COMPOSER_MODES: Array<"blocks" | "simple">;
 export const BUILTIN_PROMPT_BLOCKS: BuiltinPromptBlockMeta[];
 export function createDefaultPromptComposerConfig(): PromptComposerConfig;
 export function normalizePromptComposerConfig(value: unknown): PromptComposerConfig;
-export function getPromptRuntimeInjections(config: unknown): PromptRuntimeInjections;
 export function composePromptFromBlocks(args?: {
   config?: unknown;
   builtInBlocks?: Array<{ id: string; content: string }>;

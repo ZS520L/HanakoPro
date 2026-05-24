@@ -32,7 +32,6 @@ import {
 } from "./tool-availability.js";
 import { isActiveSessionPath } from "./message-utils.js";
 import { formatWorkspaceScopePrompt, normalizeWorkspaceScope } from "../shared/workspace-scope.js";
-import { getPromptRuntimeInjections } from "../shared/prompt-composer.js";
 import { getProviderPromptPatches } from "./provider-prompt-patches.js";
 import { prepareVisionInputForTextOnlyModel } from "./vision-prepare.js";
 import { adaptVisualContextMessages } from "./visual-context-pipeline.js";
@@ -43,7 +42,6 @@ import {
   resolveThinkingLevelForModel,
 } from "./session-thinking-level.js";
 import {
-  resolveSessionSkillsForRuntime,
   snapshotSkillsForSession,
 } from "../lib/skills/session-skill-snapshot.js";
 
@@ -229,9 +227,7 @@ function buildAppendSystemPromptSnapshot({
   hasDeferredResultStore,
   locale,
   workspaceScope,
-  runtimeInjections,
 }) {
-  if (runtimeInjections?.appendSystemPrompt === false) return [];
   const parts = [
     ...(Array.isArray(baseAppend) ? baseAppend : []),
     ...(Array.isArray(providerPromptPatches) ? providerPromptPatches : []),
@@ -248,35 +244,10 @@ function buildAppendSystemPromptSnapshot({
   return normalizeStringArray(parts);
 }
 
-function getAgentPromptRuntimeInjections(agent, overridePromptComposer) {
-  const config = overridePromptComposer !== undefined ? overridePromptComposer : agent?.config?.promptComposer;
-  return getPromptRuntimeInjections(config);
-}
-
-function makeSdkRuntimeFooter({ cwd, runtimeInjections }) {
-  const lines = [];
-  if (runtimeInjections?.currentTime !== false) {
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const day = String(now.getDate()).padStart(2, "0");
-    lines.push(`Current date: ${year}-${month}-${day}`);
-  }
-  if (runtimeInjections?.workspace !== false) {
-    lines.push(`Current working directory: ${String(cwd || "").replace(/\\/g, "/")}`);
-  }
-  return lines.join("\n");
-}
-
-function stripSdkRuntimeFooter(prompt, runtimeInjections) {
-  let next = String(prompt || "");
-  if (runtimeInjections?.workspace === false) {
-    next = next.replace(/\nCurrent working directory: [^\n]*(?=\s*$)/, "");
-  }
-  if (runtimeInjections?.currentTime === false) {
-    next = next.replace(/\nCurrent date: \d{4}-\d{2}-\d{2}(?=\nCurrent working directory:|\s*$)/, "");
-  }
-  return next;
+function stripSdkRuntimeFooter(prompt) {
+  return String(prompt || "")
+    .replace(/\nCurrent date: \d{4}-\d{2}-\d{2}(?=\nCurrent working directory:|\s*$)/, "")
+    .replace(/\nCurrent working directory: [^\n]*(?=\s*$)/, "");
 }
 
 export class SessionCoordinator {
@@ -461,7 +432,6 @@ export class SessionCoordinator {
     creatingAgent.setMemoryEnabled(frozenMemoryEnabled);
 
     const baseResourceLoader = this._d.getResourceLoader();
-    const runtimeInjections = getAgentPromptRuntimeInjections(agent);
     let restoredPermissionMode = null;
     if (restore && sessionPathForMeta) {
       try {
@@ -490,17 +460,6 @@ export class SessionCoordinator {
       thinkingLevel: initialThinkingLevel,
     }; // pre-populated for resourceLoader proxy
 
-    // 快照当前 system prompt，per-session 隔离。
-    // 后续记忆编译、技能变更只影响新对话，已有对话的 prompt 不变（保护 prefix cache）。
-    const systemPromptSnapshot = restoredPromptSnapshot?.systemPrompt
-      ?? agent.buildSystemPrompt({
-        forceMemoryEnabled: frozenMemoryEnabled,
-        forceExperienceEnabled: frozenExperienceEnabled,
-      });
-    if (preserveAgentMemoryState) {
-      creatingAgent.setMemoryEnabled(prevSessionMemoryEnabled);
-    }
-
     const localeSnapshot = agent.config?.locale || getLocale();
     const skills = this._d.getSkills?.();
     const appendSystemPromptSnapshot = restoredPromptSnapshot?.appendSystemPrompt
@@ -510,21 +469,29 @@ export class SessionCoordinator {
         hasDeferredResultStore: !!this._d.getDeferredResultStore?.(),
         locale: localeSnapshot,
         workspaceScope,
-        runtimeInjections,
       });
     const rawSkillsResultSnapshot = restoredPromptSnapshot?.skillsResult
-      ?? (runtimeInjections.skills === false
-        ? { skills: [], diagnostics: [] }
-        : (
-        skills?.getSkillsForAgent
+      ?? (skills?.getSkillsForAgent
           ? freezeSkillsResult(skills.getSkillsForAgent(agent))
-          : freezeSkillsResult(baseResourceLoader.getSkills?.())
-      ));
+          : freezeSkillsResult(baseResourceLoader.getSkills?.()));
     const skillsResultSnapshot = restoredPromptSnapshot?.skillsResult
       ? freezeSkillsResult(restoredPromptSnapshot.skillsResult)
       : freezeSkillsResult(await snapshotSkillsForSession(rawSkillsResultSnapshot, sessionPathForMeta));
     const agentsFilesResultSnapshot = restoredPromptSnapshot?.agentsFilesResult
       ?? freezeAgentsFilesResult(baseResourceLoader.getAgentsFiles?.());
+    const skillsPromptSnapshot = skillsResultSnapshot.skills.length > 0
+      ? formatSkillsForPrompt(skillsResultSnapshot.skills)
+      : "";
+    const systemPromptSnapshot = restoredPromptSnapshot?.systemPrompt
+      ?? agent.buildSystemPrompt({
+        forceMemoryEnabled: frozenMemoryEnabled,
+        forceExperienceEnabled: frozenExperienceEnabled,
+        appendSystemPrompt: appendSystemPromptSnapshot,
+        skillsPrompt: skillsPromptSnapshot,
+      });
+    if (preserveAgentMemoryState) {
+      creatingAgent.setMemoryEnabled(prevSessionMemoryEnabled);
+    }
     const promptSnapshotForPersist = restoredPromptSnapshot || {
       version: SESSION_PROMPT_SNAPSHOT_VERSION,
       systemPrompt: systemPromptSnapshot,
@@ -589,7 +556,7 @@ export class SessionCoordinator {
           "before_agent_start",
           [
             async (event) => {
-              const nextSystemPrompt = stripSdkRuntimeFooter(event.systemPrompt, runtimeInjections);
+              const nextSystemPrompt = stripSdkRuntimeFooter(event.systemPrompt);
               return nextSystemPrompt === event.systemPrompt ? undefined : { systemPrompt: nextSystemPrompt };
             },
           ],
@@ -609,10 +576,7 @@ export class SessionCoordinator {
       getExtensions: {
         value: () => {
           const base = baseResourceLoader.getExtensions?.() ?? { extensions: [], errors: [] };
-          const hanaExtensions = [visionAuxiliaryExtension];
-          if (runtimeInjections.workspace === false || runtimeInjections.currentTime === false) {
-            hanaExtensions.push(sdkRuntimeFooterControlExtension);
-          }
+          const hanaExtensions = [visionAuxiliaryExtension, sdkRuntimeFooterControlExtension];
           return {
             ...base,
             extensions: [...hanaExtensions, ...(base.extensions || [])],
@@ -620,10 +584,10 @@ export class SessionCoordinator {
         },
       },
       getAppendSystemPrompt: {
-        value: () => [...appendSystemPromptSnapshot],
+        value: () => [],
       },
       getSkills: {
-        value: () => resolveSessionSkillsForRuntime(skillsResultSnapshot),
+        value: () => ({ skills: [], diagnostics: [] }),
       },
       getAgentsFiles: {
         value: () => freezeAgentsFilesResult(agentsFilesResultSnapshot),
@@ -900,24 +864,12 @@ export class SessionCoordinator {
       primaryCwd: effectiveCwd,
       workspaceFolders,
     });
-    const runtimeInjections = getAgentPromptRuntimeInjections(agent, promptComposer);
     const frozenMemoryEnabled = agent.memoryMasterEnabled !== false && memoryEnabled !== false;
     const frozenExperienceEnabled = typeof agent.experienceEnabled === "boolean"
       ? agent.experienceEnabled === true
       : false;
     const prevSessionMemoryEnabled = agent.sessionMemoryEnabled;
     agent.setMemoryEnabled(frozenMemoryEnabled);
-    let systemPrompt = "";
-    try {
-      systemPrompt = agent.buildSystemPrompt({
-        cwdOverride: effectiveCwd,
-        forceMemoryEnabled: frozenMemoryEnabled,
-        forceExperienceEnabled: frozenExperienceEnabled,
-        ...(promptComposer !== undefined ? { promptComposer } : {}),
-      });
-    } finally {
-      agent.setMemoryEnabled(prevSessionMemoryEnabled);
-    }
     const baseResourceLoader = this._d.getResourceLoader();
     const appendSystemPrompt = buildAppendSystemPromptSnapshot({
       baseAppend: baseResourceLoader.getAppendSystemPrompt?.() || [],
@@ -925,23 +877,29 @@ export class SessionCoordinator {
       hasDeferredResultStore: !!this._d.getDeferredResultStore?.(),
       locale,
       workspaceScope,
-      runtimeInjections,
     });
     const skills = this._d.getSkills?.();
     const rawSkillsResult = skills?.getSkillsForAgent
-      ? freezeSkillsResult(runtimeInjections.skills === false ? { skills: [], diagnostics: [] } : skills.getSkillsForAgent(agent))
-      : freezeSkillsResult(runtimeInjections.skills === false ? { skills: [], diagnostics: [] } : baseResourceLoader.getSkills?.());
+      ? freezeSkillsResult(skills.getSkillsForAgent(agent))
+      : freezeSkillsResult(baseResourceLoader.getSkills?.());
     const skillsResult = freezeSkillsResult(await snapshotSkillsForSession(rawSkillsResult, null));
     const skillsPrompt = skillsResult.skills.length > 0
       ? formatSkillsForPrompt(skillsResult.skills)
       : "";
-    const parts = [
-      systemPrompt,
-      ...appendSystemPrompt,
-      skillsPrompt,
-      makeSdkRuntimeFooter({ cwd: effectiveCwd, runtimeInjections }),
-    ].filter((part) => typeof part === "string" && part.trim());
-    const content = parts.join("\n\n");
+    let systemPrompt = "";
+    try {
+      systemPrompt = agent.buildSystemPrompt({
+        cwdOverride: effectiveCwd,
+        forceMemoryEnabled: frozenMemoryEnabled,
+        forceExperienceEnabled: frozenExperienceEnabled,
+        appendSystemPrompt,
+        skillsPrompt,
+        ...(promptComposer !== undefined ? { promptComposer } : {}),
+      });
+    } finally {
+      agent.setMemoryEnabled(prevSessionMemoryEnabled);
+    }
+    const content = systemPrompt;
     return {
       agentId: agent.id,
       cwd: effectiveCwd,
