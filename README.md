@@ -1,5 +1,5 @@
 ﻿<p align="center">
-  <img src=".github/assets/banner.jpg" width="100%" alt="HanakoPro Banner">
+  <img src="image/自动化科研创新点挖掘.png" width="100%" alt="HanakoPro Banner">
 </p>
 
 <h1 align="center">HanakoPro</h1>
