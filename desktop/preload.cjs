@@ -61,6 +61,8 @@ contextBridge.exposeInMainWorld("hana", {
   syncWindowTheme: (theme) => ipcRenderer.send("window-theme-changed", theme),
   selectFolder: () => ipcRenderer.invoke("select-folder"),
   selectFiles: () => ipcRenderer.invoke("select-files"),
+  selectMarkdownFile: () => ipcRenderer.invoke("select-markdown-file"),
+  saveMarkdownFile: (defaultName) => ipcRenderer.invoke("save-markdown-file", defaultName),
   selectSkill: () => ipcRenderer.invoke("select-skill"),
   selectPlugin: () => ipcRenderer.invoke("select-plugin"),
   openFolder: (path) => ipcRenderer.invoke("open-folder", path),

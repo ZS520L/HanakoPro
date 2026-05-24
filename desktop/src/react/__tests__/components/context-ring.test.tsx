@@ -1,12 +1,28 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from '@testing-library/react';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { ContextRing } from '../../components/input/ContextRing';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ContextCompressButton, ContextRing } from '../../components/input/ContextRing';
 import { useStore } from '../../stores';
+
+const mocks = vi.hoisted(() => ({
+  compressForkSession: vi.fn(async () => true),
+}));
+
+vi.mock('../../stores/session-actions', () => ({
+  compressForkSession: mocks.compressForkSession,
+}));
 
 describe('ContextRing', () => {
   beforeEach(() => {
+    mocks.compressForkSession.mockClear();
+    window.t = ((key: string, params?: Record<string, unknown>) => {
+      if (key === 'input.contextWindow') return `上下文 ${params?.windowK}k`;
+      if (key === 'input.tokensUsed') return `已用 ${params?.tokensK}k (${params?.pct}%)`;
+      if (key === 'settings.context.compressFork') return '压缩上下文';
+      if (key === 'settings.context.compressing') return '正在压缩…';
+      return key;
+    }) as typeof window.t;
     useStore.setState({
       agentYuan: 'hanako',
       currentSessionPath: '/session/a.jsonl',
@@ -15,6 +31,7 @@ describe('ContextRing', () => {
       contextPercent: null,
       contextBySession: {},
       compactingSessions: ['/session/a.jsonl'],
+      compressForkingSessions: [],
     } as never);
   });
 
@@ -27,6 +44,7 @@ describe('ContextRing', () => {
       contextPercent: null,
       contextBySession: {},
       compactingSessions: [],
+      compressForkingSessions: [],
     } as never);
   });
 
@@ -68,6 +86,67 @@ describe('ContextRing', () => {
 
     await waitFor(() => {
       expect(getByText('100k')).toBeTruthy();
+    });
+  });
+
+  it('shows sub-1k usage without rounding it down to 0k', async () => {
+    useStore.setState({
+      contextBySession: {
+        '/session/a.jsonl': { tokens: 320, window: 32_768, percent: 0.98 },
+      },
+      compactingSessions: [],
+    } as never);
+
+    const { container, getByText } = render(<ContextRing />);
+
+    await waitFor(() => {
+      expect(container.querySelector('button')).toBeTruthy();
+    });
+    fireEvent.mouseEnter(container.querySelector('span') as HTMLElement);
+    expect(getByText('已用 <1k (<1%)')).toBeTruthy();
+  });
+
+  it('does not start compress-fork when clicking the ring', async () => {
+    useStore.setState({
+      contextBySession: {
+        '/session/a.jsonl': {
+          tokens: 6_000,
+          window: 8_000,
+          percent: 75,
+          compressionAvailable: true,
+        },
+      },
+      compactingSessions: [],
+    } as never);
+
+    const { container } = render(<ContextRing />);
+    await waitFor(() => {
+      expect(container.querySelector('button')).toBeTruthy();
+    });
+
+    fireEvent.click(container.querySelector('button') as HTMLButtonElement);
+
+    expect(mocks.compressForkSession).not.toHaveBeenCalled();
+  });
+
+  it('starts compress-fork from the standalone compress button', async () => {
+    useStore.setState({
+      contextBySession: {
+        '/session/a.jsonl': {
+          tokens: 6_000,
+          window: 8_000,
+          percent: 75,
+          compressionAvailable: true,
+        },
+      },
+      compactingSessions: [],
+    } as never);
+
+    const { getByRole } = render(<ContextCompressButton />);
+    fireEvent.click(getByRole('button'));
+
+    await waitFor(() => {
+      expect(mocks.compressForkSession).toHaveBeenCalledWith('/session/a.jsonl');
     });
   });
 });

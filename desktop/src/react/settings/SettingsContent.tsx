@@ -9,6 +9,8 @@ import { ErrorBoundary } from '../components/ErrorBoundary';
 import { SettingsNav } from './SettingsNav';
 import { Toast } from './Toast';
 import { AgentTab } from './tabs/AgentTab';
+import { ContextTab } from './tabs/ContextTab';
+import { DesktopPetTab } from './tabs/DesktopPetTab';
 import { MeTab } from './tabs/MeTab';
 import { InterfaceTab } from './tabs/InterfaceTab';
 import { WorkTab } from './tabs/WorkTab';
@@ -37,6 +39,8 @@ import styles from './Settings.module.css';
 
 const TAB_COMPONENTS: Record<string, React.ComponentType> = {
   agent: AgentTab,
+  context: ContextTab,
+  'desktop-pet': DesktopPetTab,
   me: MeTab,
   interface: InterfaceTab,
   work: WorkTab,
@@ -56,6 +60,8 @@ const TAB_COMPONENTS: Record<string, React.ComponentType> = {
 /** Tab 顶部大标题（对应左栏导航 label），所有 tab 都会显示 */
 const TAB_TITLES: Record<string, string> = {
   agent: '助手',
+  context: '上下文',
+  'desktop-pet': '桌宠',
   me: '我',
   interface: '界面',
   work: '工作空间',

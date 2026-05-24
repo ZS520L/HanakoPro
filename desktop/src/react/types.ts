@@ -252,6 +252,8 @@ export interface PlatformApi {
   openBrowserViewer(url?: string, theme?: string): void;
   selectFolder(): Promise<string | null>;
   selectFiles(): Promise<string[]>;
+  selectMarkdownFile?(): Promise<string | null>;
+  saveMarkdownFile?(defaultName?: string): Promise<string | null>;
   selectSkill(): Promise<string | null>;
   selectPlugin?(): Promise<string | null>;
   readFile(path: string): Promise<string | null>;

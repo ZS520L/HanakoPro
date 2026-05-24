@@ -245,9 +245,11 @@ describe("chat route streaming error lifecycle", () => {
     const textIndex = sent.findIndex(msg => msg.type === "text_delta" && msg.delta === "纯文本回答");
     const turnEndIndex = sent.findIndex(msg => msg.type === "turn_end");
     const statusFalseIndex = sent.findIndex(msg => msg.type === "status" && msg.isStreaming === false);
+    const contextUsageIndex = sent.findIndex(msg => msg.type === "context_usage");
     expect(textIndex).toBeGreaterThan(-1);
     expect(turnEndIndex).toBeGreaterThan(textIndex);
     expect(statusFalseIndex).toBeGreaterThan(turnEndIndex);
+    expect(contextUsageIndex).toBeGreaterThan(statusFalseIndex);
   });
 });
 
@@ -339,18 +341,21 @@ describe("chat route interrupt prompt", () => {
     let createHandlers;
     let subscriber;
     const order = [];
+    const branch = [
+      { type: "message", message: { role: "user", content: [{ type: "text", text: "慢慢输出" }] } },
+    ];
     const sessionManager = {
-      getBranch: vi.fn(() => [
-        { type: "message", message: { role: "user", content: [{ type: "text", text: "慢慢输出" }] } },
-      ]),
-      appendMessage: vi.fn(() => {
+      getBranch: vi.fn(() => branch),
+      buildSessionContext: vi.fn(() => ({ messages: branch.map(entry => entry.message) })),
+      appendMessage: vi.fn((message) => {
+        branch.push({ type: "message", message });
         order.push("snapshot");
       }),
     };
     const session = {
       sessionManager,
       messages: [],
-      model: { api: "test-api", provider: "test-provider", id: "test-model" },
+      model: { api: "test-api", provider: "test-provider", id: "test-model", contextWindow: 32_000 },
     };
     const upgradeWebSocket = vi.fn((factory) => {
       createHandlers = factory;
@@ -422,6 +427,14 @@ describe("chat route interrupt prompt", () => {
       }),
       stopReason: "interrupted",
     }));
+    expect(ws.send.mock.calls.map(([raw]) => JSON.parse(raw))).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: "context_usage",
+        sessionPath: "/tmp/session.jsonl",
+        contextWindow: 32_000,
+        tokens: expect.any(Number),
+      }),
+    ]));
     expect(order).toEqual(["interrupt", "snapshot"]);
   });
 });

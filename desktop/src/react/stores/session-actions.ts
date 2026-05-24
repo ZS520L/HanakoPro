@@ -100,6 +100,18 @@ function clearSessionRuntimeCaches(path: string): void {
   });
 }
 
+function refreshContextUsageForSession(path: string): void {
+  useStore.setState({ contextTokens: null, contextWindow: null, contextPercent: null });
+  import('../services/websocket').then(({ getWebSocket }) => {
+    const wsConn = getWebSocket();
+    if (wsConn?.readyState === WebSocket.OPEN) {
+      wsConn.send(JSON.stringify({ type: 'context_usage', sessionPath: path }));
+    }
+  }).catch((err) => {
+    console.warn('[session] context usage refresh skipped:', err);
+  });
+}
+
 // ══════════════════════════════════════════════════════
 // 消息加载（从 app-messages-shim 迁移）
 // ══════════════════════════════════════════════════════
@@ -381,15 +393,7 @@ export async function switchSession(path: string): Promise<void> {
     }
 
     // 切换会话后刷新 context ring
-    useStore.setState({ contextTokens: null, contextWindow: null, contextPercent: null });
-    import('../services/websocket').then(({ getWebSocket }) => {
-      const wsConn = getWebSocket();
-      if (wsConn?.readyState === WebSocket.OPEN) {
-        wsConn.send(JSON.stringify({ type: 'context_usage', sessionPath: path }));
-      }
-    }).catch((err) => {
-      console.warn('[session] context usage refresh skipped:', err);
-    });
+    refreshContextUsageForSession(path);
 
     // Restore input focus only if the user is still in the chat surface that initiated the switch.
     requestChatInputFocus(path);
@@ -749,6 +753,14 @@ function tr(key: string): string {
     : key;
 }
 
+function clearToastByDedupeKey(dedupeKey: string): void {
+  const state = useStore.getState();
+  const toasts = Array.isArray(state.toasts) ? state.toasts : [];
+  for (const toast of toasts) {
+    if (toast?.dedupeKey === dedupeKey) state.removeToast?.(toast.id);
+  }
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err || 'Unknown error');
 }
@@ -767,4 +779,85 @@ function showSessionSwitchError(targetPath: string, detail: unknown): void {
   const state = useStore.getState();
   state.setInlineError?.(state.currentSessionPath || targetPath || '', message, 6000);
   state.addToast(message, 'error', 6000);
+}
+
+// ══════════════════════════════════════════════════════
+// 压缩分叉
+// ══════════════════════════════════════════════════════
+
+export async function compressForkSession(sessionPath: string): Promise<boolean> {
+  const state = useStore.getState();
+  if (!sessionPath) return false;
+
+  // 防止重复触发
+  if (state.compressForkingSessions.includes(sessionPath)) return false;
+
+  state.addCompressForkingSession(sessionPath);
+  clearToastByDedupeKey('compress-fork');
+  const progressToastId = state.addToast(tr('settings.context.compressing'), 'info', 60000, { dedupeKey: 'compress-fork' });
+  let progressToastClosed = false;
+  const closeProgressToast = () => {
+    if (progressToastClosed) return;
+    progressToastClosed = true;
+    if (progressToastId != null) useStore.getState().removeToast(progressToastId);
+  };
+  try {
+    const res = await hanaFetch('/api/sessions/compress-fork', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionPath }),
+    });
+    const data = await res.json();
+
+    if (data.error) {
+      closeProgressToast();
+      state.addToast(`${tr('settings.context.compressFailed')}: ${data.error}`, 'error', 6000, { dedupeKey: 'compress-fork' });
+      return false;
+    }
+
+    if (!data.path) {
+      closeProgressToast();
+      state.addToast(tr('settings.context.compressFailed'), 'error', 6000, { dedupeKey: 'compress-fork' });
+      return false;
+    }
+    closeProgressToast();
+
+    // 切换到新会话
+    const patch: Record<string, any> = {
+      currentSessionPath: data.path,
+      pendingNewSession: false,
+      pendingSessionSwitchPath: null,
+      selectedFolder: null,
+      workspaceFolders: Array.isArray(data.workspaceFolders) ? data.workspaceFolders : [],
+      selectedAgentId: null,
+    };
+    if (data.agentId) {
+      patch.currentAgentId = data.agentId;
+      if (data.agentName) patch.agentName = data.agentName;
+    }
+    useStore.setState(patch);
+    if (data.contextUsage && typeof data.contextUsage === 'object') {
+      updateKeyed('contextBySession', data.path, {
+        tokens: data.contextUsage.tokens ?? null,
+        window: data.contextUsage.contextWindow ?? null,
+        percent: data.contextUsage.percent ?? null,
+        compressionAvailable: !!data.contextUsage.compressionAvailable,
+      }, (_s, d) => ({ contextTokens: d.tokens, contextWindow: d.window, contextPercent: d.percent }));
+    }
+    refreshContextUsageForSession(data.path);
+
+    // 加载新会话的消息
+    await loadMessages(data.path);
+    await loadSessions();
+
+    closeProgressToast();
+    state.addToast(tr('settings.context.compressSuccess'), 'success', 3000, { dedupeKey: 'compress-fork' });
+    return true;
+  } catch (err: any) {
+    closeProgressToast();
+    state.addToast(`${tr('settings.context.compressFailed')}: ${err.message || err}`, 'error', 6000, { dedupeKey: 'compress-fork' });
+    return false;
+  } finally {
+    useStore.getState().removeCompressForkingSession(sessionPath);
+  }
 }

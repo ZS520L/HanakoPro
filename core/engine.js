@@ -470,6 +470,8 @@ export class HanaEngine {
     return this._sessionCoord.getSessionWorkspaceFolders(p);
   }
 
+  async compressFork(p) { return this._sessionCoord.compressFork(p); }
+
   async abortAllStreaming() { return this._sessionCoord.abortAllStreaming(); }
   isBridgeSessionStreaming(key) { return this._bridge?.isSessionStreaming(key) ?? false; }
   async abortBridgeSession(key) { return this._bridge?.abortSession(key) ?? false; }

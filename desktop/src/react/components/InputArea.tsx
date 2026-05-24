@@ -173,6 +173,7 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
   const pendingSessionSwitchPath = useStore(s => s.pendingSessionSwitchPath);
   const currentSessionPath = useStore(s => s.currentSessionPath);
   const compacting = useStore(s => currentSessionPath ? s.compactingSessions.includes(currentSessionPath) : false);
+  const compressForking = useStore(s => currentSessionPath ? s.compressForkingSessions.includes(currentSessionPath) : false);
   const screenshotBusy = useStore(s => s.screenshotTaskCount > 0);
   const screenshotProgress = useStore(s => s.screenshotProgress);
   const inlineError = useStore(s => s.inlineErrors[s.currentSessionPath || ''] ?? null);
@@ -623,7 +624,7 @@ function InputAreaInner({ cardRef }: InputAreaInnerProps) {
     || editorHasInlineNode(editor, 'skillBadge')
     || editorHasInlineNode(editor, 'fileBadge');
   const hasUsableModel = !!currentModelInfo;
-  const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && hasUsableModel;
+  const canSend = hasContent && connected && !isStreaming && !modelSwitching && !pendingSessionSwitchPath && hasUsableModel && !compressForking;
   const modelNoticeText = modelsLoadState === 'error'
     ? t('model.loadFailedHint')
     : (modelsLoadState === 'empty' || (modelsLoadState === 'idle' && models.length === 0))

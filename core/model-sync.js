@@ -108,6 +108,10 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
   const id = getModelId(modelEntry);
   const known = lookupKnown(provider, id);
   const piBuiltin = getPiBuiltinModel(provider, id);
+  const userContextWindow = isObj ? (modelEntry.context ?? modelEntry.contextWindow) : undefined;
+  const contextWindow = provider === "moonshot" && known?.context
+    ? known.context
+    : (userContextWindow || known?.context || DEFAULT_CONTEXT_WINDOW);
 
   // 输入模态能力：用户设置 > known-models 词典 > 默认 false
   // 兼容读：migration #7 之前的旧数据用 vision 字段；两个版本后移除 vision fallback
@@ -121,7 +125,7 @@ function buildModelEntry(modelEntry, provider, baseUrl = "", api = "openai-compl
     id,
     name: (isObj && modelEntry.name) || known?.name || humanizeName(id),
     input: buildPiInputModalities({ image: image === true }),
-    contextWindow: (isObj && modelEntry.context) || known?.context || DEFAULT_CONTEXT_WINDOW,
+    contextWindow,
     reasoning: (isObj && modelEntry.reasoning !== undefined) ? modelEntry.reasoning : (known?.reasoning === true),
   };
 

@@ -4,6 +4,8 @@ vi.mock('../../hooks/use-stream-buffer', () => ({
   streamBufferManager: {
     handle: vi.fn(),
     splitForUserInterjection: vi.fn(),
+    beginTurn: vi.fn(),
+    finishTurn: vi.fn(),
   },
 }));
 
@@ -449,6 +451,7 @@ describe('ws-message-handler compaction lifecycle', () => {
       tokens: null,
       window: 200_000,
       percent: null,
+      compressionAvailable: false,
     });
   });
 });

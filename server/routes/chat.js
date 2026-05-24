@@ -13,6 +13,7 @@ import { debugLog } from "../../lib/debug-log.js";
 import { t } from "../i18n.js";
 import { getLastAssistantUsage } from "../../lib/pi-sdk/index.js";
 import { logLlmUsage } from "../../lib/llm/usage-observer.js";
+import { computeContextUsageSnapshot } from "../../core/context-usage-estimator.js";
 import { BrowserManager } from "../../lib/browser/browser-manager.js";
 import { terminalManager } from "../terminal/manager.js";
 import {
@@ -23,6 +24,7 @@ import {
   resumeSessionStream,
 } from "../session-stream-store.js";
 import { AppError } from "../../shared/errors.js";
+import { resolveContextConfig } from "../../core/context-compressor.js";
 import { errorBus } from "../../shared/error-bus.js";
 import { waitTimingDetails } from "../../lib/tools/wait-contract.js";
 import { MAX_CHAT_IMAGE_BASE64_CHARS, isAllowedChatImageMime, isChatImageBase64WithinLimit } from "../../shared/image-mime.js";
@@ -390,6 +392,34 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
     broadcast({ type: "status", isStreaming: false, sessionPath, ...extra });
   }
 
+  function buildContextUsageMessage(sessionPath) {
+    const usageSession = engine.getSessionByPath(sessionPath);
+    const contextUsage = computeContextUsageSnapshot(usageSession);
+    const pct = contextUsage.percent;
+    let compressionAvailable = false;
+    try {
+      const agentId = engine.agentIdFromSessionPath?.(sessionPath) || engine.currentAgentId;
+      const agent = engine.getAgent?.(agentId);
+      const ctxConfig = resolveContextConfig(agent?._config);
+      if (ctxConfig.enabled && pct != null && (pct / 100) >= ctxConfig.threshold) {
+        compressionAvailable = true;
+      }
+    } catch {}
+    return {
+      type: "context_usage",
+      sessionPath,
+      tokens: contextUsage.tokens,
+      contextWindow: contextUsage.contextWindow,
+      percent: pct,
+      compressionAvailable,
+    };
+  }
+
+  function broadcastContextUsage(sessionPath) {
+    if (!sessionPath) return;
+    broadcast(buildContextUsageMessage(sessionPath));
+  }
+
   function scheduleDeferredStatusFalse(sessionPath, ss, extra = null) {
     clearDeferredStatusFalseTimer(ss);
     ss.pendingStatusFalseExtra = extra || ss.pendingStatusFalseExtra || {};
@@ -537,6 +567,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
 
     debugLog()?.log("ws", `turn done (${sessionPath?.split("/").pop()})`);
     maybeGenerateFirstTurnTitle(sessionPath, ss);
+    broadcastContextUsage(sessionPath);
   }
 
   // 单订阅：事件只写入一次，再按需广播到所有连接中的客户端。
@@ -1107,6 +1138,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
                 broadcastStreamingStopped(abortPath, abortSs, { aborted: true, reason: "abort" });
               }
               try { await persistInterruptedAssistantSnapshot(abortPath, abortSs); } catch {}
+              broadcastContextUsage(abortPath);
               return;
             }
 
@@ -1125,6 +1157,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
                 broadcastStreamingStopped(interruptPath, interruptSs, { aborted: true, reason: "interrupt" });
               }
               try { await persistInterruptedAssistantSnapshot(interruptPath, interruptSs); } catch {}
+              broadcastContextUsage(interruptPath);
               msg.type = "prompt";
               msg.interruptedPreviousTurn = true;
             }
@@ -1179,15 +1212,7 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
 
             if (msg.type === "context_usage") {
               const usagePath = requireSessionPath(msg, ws); if (!usagePath) return;
-              const usageSession = engine.getSessionByPath(usagePath);
-              const usage = usageSession?.getContextUsage?.();
-              wsSend(ws, {
-                type: "context_usage",
-                sessionPath: usagePath,
-                tokens: usage?.tokens ?? null,
-                contextWindow: usage?.contextWindow ?? null,
-                percent: usage?.percent ?? null,
-              });
+              wsSend(ws, buildContextUsageMessage(usagePath));
               return;
             }
 
@@ -1222,27 +1247,11 @@ export function createChatRoute(engine, hub, { upgradeWebSocket }) {
 
             if (msg.type === "compact") {
               const compactPath = requireSessionPath(msg, ws); if (!compactPath) return;
-              const session = engine.getSessionByPath(compactPath);
-              if (!session) {
-                wsSend(ws, { type: "error", message: t("error.noActiveSession"), sessionPath: compactPath });
-                return;
-              }
-              if (session.isCompacting) {
-                wsSend(ws, { type: "error", message: t("error.compacting"), sessionPath: compactPath });
-                return;
-              }
-              if (engine.isSessionStreaming(compactPath)) {
-                wsSend(ws, { type: "error", message: t("error.waitForReply"), sessionPath: compactPath });
-                return;
-              }
-              try {
-                await session.compact();
-              } catch (err) {
-                const errMsg = err.message || "";
-                if (!errMsg.includes("Already compacted") && !errMsg.includes("Nothing to compact")) {
-                  wsSend(ws, { type: "error", message: t("error.compactFailed", { msg: errMsg }), sessionPath: compactPath });
-                }
-              }
+              wsSend(ws, {
+                type: "error",
+                message: "原地上下文压缩已禁用，请使用“压缩并开启新对话”",
+                sessionPath: compactPath,
+              });
               return;
             }
 

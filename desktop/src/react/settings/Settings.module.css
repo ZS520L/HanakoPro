@@ -5122,135 +5122,34 @@ a.about-link:hover {
     background: rgba(var(--accent-rgb), 0.12);
 }
 
-/* ========================================
-   Experience 经验分类列表
-   ======================================== */
-
-.exp-list {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-sm);
+.pin-file-actions {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-xs);
 }
 
-.exp-empty {
-    text-align: center;
-    padding: var(--space-lg) var(--space-sm);
-    color: var(--text-muted);
-    font-size: 0.82rem;
-    font-family: var(--font-serif);
-}
-
-.exp-block {
+.pin-file-action-btn {
+    border: 1px solid var(--overlay-light);
     background: var(--bg-card, var(--bg));
-    border-radius: var(--radius-card, 10px);
-    box-shadow: 0 1px 4px var(--shadow);
-    padding: 0.6rem var(--space-md) 0.5rem;
-    transition: box-shadow var(--duration-fast) var(--ease-out);
-}
-
-.exp-block:hover {
-    box-shadow: 0 2px 8px var(--shadow);
-}
-
-.exp-block-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 0.3rem;
-}
-
-.exp-block-title {
-    font-family: var(--font-serif);
-    font-size: 0.88rem;
-    font-weight: 600;
-    color: var(--text);
-    letter-spacing: 0.04em;
-}
-
-.exp-block-actions {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    opacity: 0;
-    transition: opacity var(--duration-fast);
-    flex-shrink: 0;
-}
-
-.exp-block:hover .exp-block-actions {
-    opacity: 1;
-}
-
-.exp-block-action {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 26px;
-    height: 26px;
-    background: none;
-    border: none;
-    border-radius: var(--radius-input, 4px);
-    color: var(--text-muted);
+    color: var(--text-light);
+    border-radius: var(--radius-input, 8px);
+    padding: 3px 10px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    white-space: nowrap;
     cursor: pointer;
     transition: all var(--duration-fast) var(--ease-out);
 }
 
-.exp-block-action:hover {
+.pin-file-action-btn:hover:not(:disabled) {
     color: var(--accent);
+    border-color: rgba(var(--accent-rgb), 0.25);
     background: var(--accent-light);
 }
 
-.exp-block-action.delete:hover {
-    color: var(--coral);
-    background: rgba(var(--coral-rgb), 0.08);
-}
-
-.exp-block-body {
-    display: flex;
-    flex-direction: column;
-    gap: 1px;
-}
-
-.exp-entry {
-    display: flex;
-    gap: 0.4em;
-    font-family: var(--font-serif);
-    font-size: 0.82rem;
-    color: var(--text-light);
-    line-height: 1.65;
-    padding: 0.1rem 0;
-}
-
-.exp-entry-num {
-    color: var(--text-muted);
-    flex-shrink: 0;
-    min-width: 1.4em;
-    text-align: right;
-}
-
-.exp-entry-text {
-    flex: 1;
-    min-width: 0;
-}
-
-.exp-block-editor {
-    font-family: var(--font-serif);
-    font-size: 0.82rem;
-    color: var(--text);
-    background: transparent;
-    border: 1px solid var(--overlay-light);
-    border-radius: var(--radius-input, 4px);
-    padding: 0.4rem 0.55rem;
-    resize: vertical;
-    width: 100%;
-    min-height: 60px;
-    max-height: 300px;
-    line-height: 1.65;
-    outline: none;
-    transition: border-color var(--duration-fast);
-}
-
-.exp-block-editor:focus {
-    border-color: rgba(var(--accent-rgb), 0.4);
+.pin-file-action-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
 }
 
 /* ========================================
@@ -6794,6 +6693,98 @@ a.about-link:hover {
    都必须显式声明 no-drag，否则会出现"能看到但点不到"的死状态。
    新增浮层组件时，把根 class 加进来。
    ============================================================ */
+/* ── Context compression mode cards ── */
+
+.context-mode-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-sm);
+    margin-bottom: var(--space-sm);
+}
+
+.context-mode-card {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    padding: 12px 14px;
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-card, 10px);
+    background: color-mix(in srgb, var(--bg-card) 88%, transparent);
+    cursor: pointer;
+    transition: border-color var(--duration-fast) var(--ease-out),
+                background var(--duration-fast) var(--ease-out);
+}
+
+.context-mode-card:hover:not(.context-mode-card-disabled) {
+    border-color: color-mix(in srgb, var(--accent) 50%, var(--border));
+    background: color-mix(in srgb, var(--accent) 4%, var(--bg-card));
+}
+
+.context-mode-card-active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-card));
+}
+
+.context-mode-card-disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.context-mode-card-name {
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.context-mode-card-desc {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+}
+
+/* ── Pill buttons (reusable) ── */
+
+.settings-pill-btn {
+    padding: 5px 14px;
+    border: 1px solid var(--border);
+    border-radius: 999px;
+    background: var(--bg-card);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: all var(--duration-fast) var(--ease-out);
+}
+
+.settings-pill-btn:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+}
+
+.settings-pill-btn-active {
+    border-color: var(--accent);
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+    color: var(--accent);
+    font-weight: 600;
+}
+
+.settings-pill-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.settings-textarea-readonly {
+    background: var(--bg-secondary, #f5f5f5);
+    opacity: 0.85;
+    cursor: default;
+    resize: vertical;
+    font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', 'Consolas', monospace;
+    font-size: 12.5px;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    color: var(--text-secondary, #666);
+}
+
 .pv-model-edit-overlay,
 .pv-model-edit-card,
 .pv-model-dropdown-panel,

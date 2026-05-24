@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useStore } from '../../stores';
 import { useI18n } from '../../hooks/use-i18n';
-import { getWebSocket } from '../../services/websocket';
 import { shouldShowContextRingTokenLabel } from './context-ring-visibility';
+import { compressForkSession } from '../../stores/session-actions';
 import styles from './InputArea.module.css';
 
 export function ContextRing() {
@@ -24,6 +24,7 @@ export function ContextRing() {
   const storeContextWindow = contextEntry?.window ?? globalContextWindow;
   const storeContextPercent = contextEntry?.percent ?? globalContextPercent;
   const storeCompacting = useStore(s => currentSessionPath ? s.compactingSessions.includes(currentSessionPath) : false);
+  const forking = useStore(s => currentSessionPath ? s.compressForkingSessions.includes(currentSessionPath) : false);
 
   useEffect(() => {
     setTokens(storeContextTokens ?? null);
@@ -31,14 +32,6 @@ export function ContextRing() {
     setPercent(storeContextPercent ?? null);
     setCompacting(storeCompacting);
   }, [storeContextTokens, storeContextWindow, storeContextPercent, storeCompacting]);
-
-  const handleClick = useCallback(() => {
-    if (compacting) return;
-    const ws = getWebSocket();
-    if (ws?.readyState === WebSocket.OPEN) {
-      ws.send(JSON.stringify({ type: 'compact', sessionPath: useStore.getState().currentSessionPath }));
-    }
-  }, [compacting]);
 
   if (!currentSessionPath) return null;
   const displayTokens = tokens ?? 0;
@@ -55,8 +48,9 @@ export function ContextRing() {
   const yuan = agentYuan || 'hanako';
 
   // token 数量格式化
-  const tokensK = Math.round(displayTokens / 1000);
+  const tokensK = displayTokens > 0 && displayTokens < 1000 ? '<1' : Math.round(displayTokens / 1000);
   const windowK = contextWindow != null ? Math.round(contextWindow / 1000) : 0;
+  const pctLabel = pct > 0 && pct < 1 ? '<1' : Math.round(pct);
 
   return (
     <span className={styles['context-ring-wrap']}
@@ -64,10 +58,9 @@ export function ContextRing() {
       onMouseLeave={() => setHovered(false)}
     >
       <button
-        className={`${styles['context-ring']}${compacting ? ` ${styles.compacting}` : ''}`}
+        className={`${styles['context-ring']}${compacting ? ` ${styles.compacting}` : ''}${forking ? ` ${styles.forking}` : ''}`}
         data-yuan={yuan}
-        onClick={handleClick}
-        disabled={compacting}
+        disabled={compacting || forking}
       >
         <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
           <circle cx={center} cy={center} r={r} fill="none" stroke="var(--ring-bg)" strokeWidth={sw} />
@@ -91,10 +84,36 @@ export function ContextRing() {
         <div className={styles['context-ring-tooltip']}>
           <div>{t('input.contextWindow', { windowK })}</div>
           {tokens != null && (
-            <div>{t('input.tokensUsed', { tokensK, pct: Math.round(pct) })}</div>
+            <div>{t('input.tokensUsed', { tokensK, pct: pctLabel })}</div>
           )}
         </div>
       )}
     </span>
+  );
+}
+
+export function ContextCompressButton() {
+  const { t } = useI18n();
+  const currentSessionPath = useStore(s => s.currentSessionPath);
+  const contextEntry = useStore(s => s.contextBySession[s.currentSessionPath || '']);
+  const compressionAvailable = contextEntry?.compressionAvailable ?? false;
+  const forking = useStore(s => currentSessionPath ? s.compressForkingSessions.includes(currentSessionPath) : false);
+
+  const handleCompressFork = useCallback(async () => {
+    if (forking || !currentSessionPath) return;
+    await compressForkSession(currentSessionPath);
+  }, [forking, currentSessionPath]);
+
+  if (!currentSessionPath || (!compressionAvailable && !forking)) return null;
+
+  return (
+    <button
+      type="button"
+      className={`${styles['context-compress-action-btn']}${forking ? ` ${styles.forking}` : ''}`}
+      onClick={handleCompressFork}
+      disabled={forking}
+    >
+      {forking ? t('settings.context.compressing') : t('settings.context.compressFork')}
+    </button>
   );
 }

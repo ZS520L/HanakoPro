@@ -4,11 +4,15 @@ export interface ContextSlice {
   contextWindow: number | null;
   contextPercent: number | null;
   /** 按 session path 存储的 context usage（权威源） */
-  contextBySession: Record<string, { tokens: number | null; window: number | null; percent: number | null }>;
+  contextBySession: Record<string, { tokens: number | null; window: number | null; percent: number | null; compressionAvailable?: boolean }>;
   /** Session paths currently undergoing compaction */
   compactingSessions: string[];
   addCompactingSession: (path: string) => void;
   removeCompactingSession: (path: string) => void;
+  /** Session paths currently undergoing compress-fork */
+  compressForkingSessions: string[];
+  addCompressForkingSession: (path: string) => void;
+  removeCompressForkingSession: (path: string) => void;
 }
 
 export const createContextSlice = (
@@ -26,6 +30,15 @@ export const createContextSlice = (
   })),
   removeCompactingSession: (path) => set((s) => ({
     compactingSessions: s.compactingSessions.filter(p => p !== path),
+  })),
+  compressForkingSessions: [],
+  addCompressForkingSession: (path) => set((s) => ({
+    compressForkingSessions: s.compressForkingSessions.includes(path)
+      ? s.compressForkingSessions
+      : [...s.compressForkingSessions, path],
+  })),
+  removeCompressForkingSession: (path) => set((s) => ({
+    compressForkingSessions: s.compressForkingSessions.filter(p => p !== path),
   })),
 });
 

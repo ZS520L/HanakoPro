@@ -58,7 +58,7 @@ describe("SessionCoordinator.switchSessionModel", () => {
     expect(coord.isSessionSwitching("/tmp/missing.jsonl")).toBe(false);
   });
 
-  it("does not crash when context usage exists and adaptation is needed", async () => {
+  it("rejects model switch instead of auto-adapting when context exceeds the target window", async () => {
     const coord = new SessionCoordinator({
       agentsDir: "/tmp/agents",
       getAgent: () => ({ sessionDir: "/tmp/sessions" }),
@@ -104,21 +104,16 @@ describe("SessionCoordinator.switchSessionModel", () => {
     const compactSpy = vi.spyOn(coord, "_compactWithModel").mockResolvedValue();
     const truncateSpy = vi.spyOn(coord, "_hardTruncate").mockResolvedValue();
 
-    const result = await coord.switchSessionModel("/tmp/session.jsonl", {
+    await expect(coord.switchSessionModel("/tmp/session.jsonl", {
       id: "new-model",
       provider: "test",
       contextWindow: 12000,
-    });
+    })).rejects.toThrow("请先压缩对话再切换模型");
 
-    expect(result).toEqual({ adaptations: ["compacted"], thinkingLevel: "medium" });
-    expect(compactSpy).toHaveBeenCalledOnce();
+    expect(compactSpy).not.toHaveBeenCalled();
     expect(truncateSpy).not.toHaveBeenCalled();
-    expect(setModel).toHaveBeenCalledWith({
-      id: "new-model",
-      provider: "test",
-      contextWindow: 12000,
-    });
-    expect(entry.modelId).toBe("new-model");
+    expect(setModel).not.toHaveBeenCalled();
+    expect(entry.modelId).toBe("old-model");
     expect(entry.modelProvider).toBe("test");
   });
 

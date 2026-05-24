@@ -7,6 +7,7 @@
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { getWebSocket } from '../../services/websocket';
 import { useStore } from '../../stores';
+import { compressForkSession } from '../../stores/session-actions';
 
 // ── Xing Prompt ──
 
@@ -132,12 +133,10 @@ export function executeCompact(
     setInput('');
     setMenuOpen(false);
     try {
-      const ws = getWebSocket();
-      if (ws?.readyState === WebSocket.OPEN) {
-        ws.send(JSON.stringify({ type: 'compact', sessionPath: useStore.getState().currentSessionPath }));
-      }
+      const sessionPath = useStore.getState().currentSessionPath;
+      if (sessionPath) await compressForkSession(sessionPath);
     } finally {
-      setTimeout(() => setBusy(null), 1500);
+      setBusy(null);
     }
   };
 }

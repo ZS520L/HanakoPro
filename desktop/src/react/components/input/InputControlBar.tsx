@@ -1,6 +1,6 @@
 import { memo, type RefObject } from 'react';
 import { PlanModeButton, type PermissionMode } from './PlanModeButton';
-import { ContextRing } from './ContextRing';
+import { ContextCompressButton, ContextRing } from './ContextRing';
 import { ThinkingLevelButton } from './ThinkingLevelButton';
 import { ModelSelector } from './ModelSelector';
 import { SendButton } from './SendButton';
@@ -74,6 +74,7 @@ export const InputControlBar = memo(function InputControlBar(props: Props) {
           <ThinkingLevelButton level={thinkingLevel} onChange={onThinkingChange} modelXhigh={modelXhigh} />
         )}
         <ModelSelector models={models} sessionModel={sessionModel} isStreaming={isStreaming} loadState={modelsLoadState} />
+        <ContextCompressButton />
         <SendButton isStreaming={isStreaming} hasInput={hasInput}
           disabled={isStreaming ? false : !canSend} onSend={onSend} onSteer={onSteer} onStop={onStop} />
       </div>

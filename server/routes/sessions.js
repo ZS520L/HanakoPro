@@ -28,6 +28,8 @@ import {
 import { SessionManager } from "../../lib/pi-sdk/index.js";
 import { TODO_STATE_CUSTOM_TYPE } from "../../lib/tools/todo-constants.js";
 import { mergeWorkspaceHistory } from "../../shared/workspace-history.js";
+import { computeContextUsageSnapshot } from "../../core/context-usage-estimator.js";
+import { resolveContextConfig } from "../../core/context-compressor.js";
 import {
   deleteSessionFileSidecarSync,
   moveSessionFileSidecarSync,
@@ -930,6 +932,66 @@ export function createSessionsRoute(engine) {
       try { await engine.clearSessionTitle(activeKey); } catch {}
       return c.json({ ok: true });
     } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  // ══════════════════════════════════════════════════════
+  // 压缩分叉：压缩旧消息 → 创建新会话
+  // ══════════════════════════════════════════════════════
+  route.post("/sessions/compress-fork", async (c) => {
+    try {
+      const body = await safeJson(c);
+      const { sessionPath } = body;
+      if (!sessionPath) {
+        return c.json({ error: t("error.missingParam", { param: "sessionPath" }) }, 400);
+      }
+      if (engine.isSessionStreaming(sessionPath)) {
+        return c.json({ error: t("error.waitForReply") }, 409);
+      }
+
+      const result = await engine.compressFork(sessionPath);
+      if (!result.ok) {
+        return c.json({ error: result.error }, 500);
+      }
+
+      engine.persistSessionMeta();
+
+      // 切换到新会话以获取完整响应数据
+      await engine.switchSession(result.sessionPath);
+
+      const newSession = engine.getSessionByPath(result.sessionPath);
+      const switchedAgentId = engine.agentIdFromSessionPath(result.sessionPath) || engine.currentAgentId;
+      const switchedAgent = engine.getAgent(switchedAgentId);
+      const contextUsage = computeContextUsageSnapshot(newSession);
+      let compressionAvailable = false;
+      try {
+        const ctxConfig = resolveContextConfig(switchedAgent?._config);
+        compressionAvailable = !!(ctxConfig.enabled && contextUsage.percent != null && (contextUsage.percent / 100) >= ctxConfig.threshold);
+      } catch {}
+
+      return c.json({
+        ok: true,
+        path: result.sessionPath,
+        cwd: engine.cwd,
+        workspaceFolders: engine.getSessionWorkspaceFolders?.(result.sessionPath) || [],
+        agentId: switchedAgentId,
+        agentName: switchedAgent?.agentName || engine.agentName,
+        planMode: engine.planMode,
+        permissionMode: engine.permissionMode,
+        accessMode: engine.accessMode,
+        thinkingLevel: engine.getSessionThinkingLevel?.(result.sessionPath) || engine.getThinkingLevel?.() || "auto",
+        memoryModelUnavailableReason: engine.memoryModelUnavailableReason || null,
+        messageCount: newSession?.messages?.length || 0,
+        contextUsage: {
+          tokens: contextUsage.tokens,
+          contextWindow: contextUsage.contextWindow,
+          percent: contextUsage.percent,
+          compressionAvailable,
+        },
+      });
+    } catch (err) {
+      console.error("[sessions/compress-fork] error:", err);
       return c.json({ error: err.message }, 500);
     }
   });

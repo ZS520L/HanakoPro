@@ -571,7 +571,7 @@ export function handleServerMessage(msg: any): void {
       const window = msg.contextWindow ?? existingWindow;
       if (msg.tokens != null || window != null || msg.percent != null) {
         updateKeyed('contextBySession', sp,
-          { tokens: msg.tokens ?? null, window, percent: msg.percent ?? null },
+          { tokens: msg.tokens ?? null, window, percent: msg.percent ?? null, compressionAvailable: !!msg.compressionAvailable },
           (_s, d) => ({ contextTokens: d.tokens, contextWindow: d.window, contextPercent: d.percent }),
         );
       }

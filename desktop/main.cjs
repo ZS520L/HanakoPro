@@ -3202,6 +3202,36 @@ wrapIpcBestEffortHandler("select-files", async (event) => {
   return result.filePaths;
 });
 
+wrapIpcBestEffortHandler("select-markdown-file", async (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (!win) return null;
+  const result = await dialog.showOpenDialog(win, {
+    properties: ["openFile"],
+    title: "选择 Markdown 文件",
+    filters: [
+      { name: "Markdown", extensions: ["md", "markdown"] },
+      { name: "All Files", extensions: ["*"] },
+    ],
+  });
+  if (result.canceled || !result.filePaths.length) return null;
+  return result.filePaths[0];
+});
+
+wrapIpcBestEffortHandler("save-markdown-file", async (event, defaultName) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (!win) return null;
+  const result = await dialog.showSaveDialog(win, {
+    title: "保存 Markdown 文件",
+    defaultPath: typeof defaultName === "string" && defaultName.trim() ? defaultName.trim() : "hanakopro-pinned-memory.md",
+    filters: [
+      { name: "Markdown", extensions: ["md"] },
+      { name: "All Files", extensions: ["*"] },
+    ],
+  });
+  if (result.canceled || !result.filePath) return null;
+  return path.extname(result.filePath) ? result.filePath : `${result.filePath}.md`;
+});
+
 // 选择技能文件/文件夹（支持 .zip / .skill / 文件夹）
 wrapIpcBestEffortHandler("select-skill", async (event) => {
   const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;

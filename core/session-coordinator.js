@@ -11,6 +11,8 @@ import path from "path";
 import { createAgentSession, SessionManager, estimateTokens, findCutPoint, formatSkillsForPrompt, generateSummary, refreshSessionModelFromRegistry } from "../lib/pi-sdk/index.js";
 import { createDefaultSettings } from "./session-defaults.js";
 import { computeHardTruncation } from "./compaction-utils.js";
+import { cloneMessageForForkRetention, resolveContextConfig, shouldTriggerCompression, splitMessages, executeCompression } from "./context-compressor.js";
+import { callText } from "./llm-client.js";
 import { teardownSessionResources } from "./session-teardown.js";
 import { evaluateSessionHealth } from "./session-health.js";
 import { createModuleLogger } from "../lib/debug-log.js";
@@ -1218,38 +1220,9 @@ export class SessionCoordinator {
       const effectiveWindow = Math.floor(newModel.contextWindow * 0.9) - 4000;
 
       if (currentTokens > effectiveWindow) {
-        // 预检：最后一轮对话是否本身就超窗口（此时 compact/truncate 都救不了）
-        const lastUserIdx = msgs.findLastIndex(m => m.role === "user");
-        if (lastUserIdx >= 0) {
-          const lastTurnTokens = msgs.slice(lastUserIdx).reduce((s, m) => s + estimateTokens(m), 0);
-          if (lastTurnTokens > effectiveWindow) {
-            throw new Error("当前对话无法适配目标模型的上下文窗口");
-          }
-        }
-
-        // 尝试压缩
-        try {
-          await this._compactWithModel(session, effectiveWindow, oldModel);
-          adaptations.push("compacted");
-        } catch (compactErr) {
-          log.warn(`compactWithModel failed, falling back to hard truncate: ${compactErr.message}`);
-          // 压缩失败，尝试硬截断
-          try {
-            await this._hardTruncate(session, effectiveWindow);
-            adaptations.push("truncated");
-          } catch (truncErr) {
-            throw new Error(`Failed to fit context into new model window: ${truncErr.message}`);
-          }
-        }
-
-        // 终极检查：压缩/截断后仍然超窗口则拒绝
-        const postMsgs = session.agent.state.messages;
-        const postTokens = postMsgs.reduce((sum, m) => sum + estimateTokens(m), 0);
-        if (postTokens > effectiveWindow) {
-          throw new Error(
-            `Context still exceeds new model window after adaptation (${postTokens} > ${effectiveWindow})`
-          );
-        }
+        throw new Error(
+          `当前上下文 (${currentTokens} tokens) 超过目标模型窗口 (${effectiveWindow} tokens)，请先压缩对话再切换模型`
+        );
       }
 
       // 执行模型切换
@@ -2430,5 +2403,259 @@ export class SessionCoordinator {
   /** 创建 session 专用 settings（控制 compaction + max_completion_tokens） */
   _createSettings(model) {
     return createDefaultSettings();
+  }
+
+  /**
+   * 压缩分叉：压缩旧消息 → 创建新会话（摘要 + 固定回复 + 最近 N 轮）。
+   * 原会话完全不变。
+   *
+   * @param {string} sourceSessionPath - 源会话路径
+   * @returns {Promise<{ok:boolean, sessionPath?:string, error?:string}>}
+   */
+  async compressFork(sourceSessionPath) {
+    const sourceEntry = this._sessions.get(sourceSessionPath);
+    const sourceSession = sourceEntry?.session ?? null;
+    if (!sourceSession) return { ok: false, error: "session not found" };
+
+    const agentId = sourceEntry?.agentId || sourceSession.agentId || this._d.getActiveAgentId();
+    const agent = this._d.getAgentById?.(agentId) || this._d.getAgent();
+    if (!agent) return { ok: false, error: "agent not found" };
+
+    const contextConfig = resolveContextConfig(agent._config);
+    if (!contextConfig.enabled) return { ok: false, error: "context compression disabled" };
+
+    const msgs = sourceSession.agent?.state?.messages || [];
+    if (msgs.length === 0) return { ok: false, error: "no messages" };
+
+    log.log(`[compressFork] source=${sourceSessionPath}, mode=${contextConfig.mode}, messages=${msgs.length}`);
+
+    const { compressible, retained } = splitMessages(msgs, contextConfig.recentTurnsProtected, contextConfig.protect);
+    if (compressible.length === 0) return { ok: false, error: "no compressible messages" };
+
+    // 选择压缩用模型
+    const models = this._d.getModels();
+    const compressModel = contextConfig.compressionModel === "chat"
+      ? sourceSession.model
+      : (models.utilityModel || sourceSession.model);
+
+    const auth = await models.modelRegistry.getApiKeyAndHeaders(compressModel);
+    if (!auth.ok || !auth.apiKey) return { ok: false, error: "auth failed for compression model" };
+
+    const generateFn = async (prompt) => {
+      try {
+        return await callText({
+          api: compressModel.api || "openai-completions",
+          apiKey: auth.apiKey,
+          baseUrl: compressModel.baseUrl || compressModel.base_url || "",
+          model: compressModel,
+          systemPrompt: "You are a conversation compression assistant. Your task is to compress conversation history while preserving key information. Output ONLY the compressed result, no meta-commentary.",
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: 4000,
+          temperature: 0.2,
+        });
+      } catch (err) {
+        log.warn(`[compressFork] callText failed: ${err.message}`);
+        return "";
+      }
+    };
+
+    // 执行压缩
+    let summary;
+    try {
+      summary = await executeCompression({
+        messages: compressible,
+        mode: contextConfig.mode,
+        model: compressModel,
+        generateFn,
+        customPrompt: contextConfig.customPrompt,
+      });
+    } catch (err) {
+      log.error(`[compressFork] compression failed: ${err.message}`);
+      return { ok: false, error: `compression failed: ${err.message}` };
+    }
+
+    if (!summary) return { ok: false, error: "compression returned empty" };
+
+    // 创建新会话
+    const cwd = sourceSession.sessionManager?.getCwd?.() || process.cwd();
+    const memEnabled = agent.sessionMemoryEnabled !== false;
+    let newSessionPath;
+    try {
+      ({ sessionPath: newSessionPath } = await this.createSession(null, cwd, memEnabled, sourceSession.model, {
+        agent,
+        agentId,
+        workspaceFolders: sourceEntry?.workspaceFolders || [],
+      }));
+    } catch (err) {
+      log.error(`[compressFork] session creation failed: ${err.message}`);
+      return { ok: false, error: `session creation failed: ${err.message}` };
+    }
+
+    // 向新会话注入消息：摘要(user) + 固定回复(assistant) + retained
+    const newSession = this.getSessionByPath(newSessionPath);
+    if (!newSession?.sessionManager) {
+      return { ok: false, error: "new session has no sessionManager" };
+    }
+    const sm = newSession.sessionManager;
+    const ts = Date.now();
+
+    // 1. 压缩摘要作为用户第一条消息
+    sm.appendMessage({
+      role: "user",
+      content: [{ type: "text", text: summary }],
+      timestamp: ts,
+    });
+
+    // 2. 固定 AI 回复
+    sm.appendMessage({
+      role: "assistant",
+      content: [{ type: "text", text: "我已了解之前的对话背景，让我们继续。" }],
+      timestamp: ts + 1,
+    });
+
+    // 3. 保留的最近 N 轮消息
+    for (const m of retained) {
+      if (m.role === "system") continue; // system prompt 由新 session 自己生成
+      const retainedMessage = cloneMessageForForkRetention(m);
+      sm.appendMessage({
+        ...retainedMessage,
+        timestamp: retainedMessage.timestamp || (ts + 2),
+      });
+    }
+
+    // 重建新会话的消息上下文
+    try {
+      const ctx = sm.buildSessionContext();
+      newSession.agent.replaceMessages(ctx.messages);
+    } catch (err) {
+      log.warn(`[compressFork] replaceMessages failed: ${err.message}`);
+    }
+
+    log.log(`[compressFork] done: forked to ${newSessionPath}, compressed ${compressible.length} msgs`);
+    return { ok: true, sessionPath: newSessionPath };
+  }
+
+  /**
+   * 基于 agent config 的上下文压缩。
+   * 在 _compactWithModel 之前调用，根据 context 配置选择策略。
+   *
+   * @param {object} session - Pi SDK session 对象
+   * @param {object} agent - Agent 实例
+   * @param {number} contextWindow - 当前模型上下文窗口大小
+   * @returns {Promise<boolean>} 是否执行了压缩
+   */
+  async _contextCompress(session, agent, contextWindow) {
+    const contextConfig = resolveContextConfig(agent._config);
+    if (!contextConfig.enabled) return false;
+
+    const msgs = session.agent?.state?.messages || [];
+    if (!shouldTriggerCompression({ messages: msgs, contextWindow, contextConfig })) {
+      return false;
+    }
+
+    log.log(`[contextCompress] triggered: mode=${contextConfig.mode}, messages=${msgs.length}`);
+
+    const { compressible, retained } = splitMessages(msgs, contextConfig.recentTurnsProtected, contextConfig.protect);
+    if (compressible.length === 0) {
+      log.log("[contextCompress] no compressible messages after split");
+      return false;
+    }
+
+    // 选择压缩用模型
+    const models = this._d.getModels();
+    const compressModel = contextConfig.compressionModel === "chat"
+      ? session.model
+      : (models.utilityModel || session.model);
+
+    // 获取 API key
+    const auth = await models.modelRegistry.getApiKeyAndHeaders(compressModel);
+    if (!auth.ok || !auth.apiKey) {
+      log.warn("[contextCompress] auth failed for compression model, skipping");
+      return false;
+    }
+
+    // generateFn: 使用 callText 直接发送 system + user，避免 generateSummary 的双重指令
+    const generateFn = async (prompt) => {
+      try {
+        return await callText({
+          api: compressModel.api || "openai-completions",
+          apiKey: auth.apiKey,
+          baseUrl: compressModel.baseUrl || compressModel.base_url || "",
+          model: compressModel,
+          systemPrompt: "You are a conversation compression assistant. Your task is to compress conversation history while preserving key information. Output ONLY the compressed result, no meta-commentary.",
+          messages: [{ role: "user", content: prompt }],
+          maxTokens: 4000,
+          temperature: 0.2,
+        });
+      } catch (err) {
+        log.warn(`[contextCompress] callText failed: ${err.message}`);
+        return "";
+      }
+    };
+
+    try {
+      const summary = await executeCompression({
+        messages: compressible,
+        mode: contextConfig.mode,
+        model: compressModel,
+        generateFn,
+        customPrompt: contextConfig.customPrompt,
+      });
+
+      if (!summary) {
+        log.warn("[contextCompress] compression returned empty summary");
+        return false;
+      }
+
+      // 计算压缩前 token 数
+      const tokensBefore = compressible.reduce((sum, m) => sum + estimateTokens(m), 0);
+
+      // 通过 sessionManager 持久化
+      const sm = session.sessionManager;
+      const pathEntries = sm.getBranch();
+
+      // 找到 retained 第一条消息对应的 entry id
+      const retainedFirstMsg = retained[0];
+      let firstKeptEntryId = null;
+      if (retainedFirstMsg) {
+        for (const entry of pathEntries) {
+          if (entry.type === "message" && entry.message === retainedFirstMsg) {
+            firstKeptEntryId = entry.id;
+            break;
+          }
+        }
+      }
+
+      if (!firstKeptEntryId) {
+        // 回退：尝试按消息数量找 entry
+        let msgCount = 0;
+        for (const entry of pathEntries) {
+          if (entry.type === "message") {
+            msgCount++;
+            if (msgCount > compressible.length) {
+              firstKeptEntryId = entry.id;
+              break;
+            }
+          }
+        }
+      }
+
+      if (firstKeptEntryId) {
+        sm.appendCompaction(summary, firstKeptEntryId, tokensBefore, {
+          reason: `context-compression-${contextConfig.mode}`,
+        });
+        // 重建上下文
+        const ctx = sm.buildSessionContext();
+        session.agent.replaceMessages(ctx.messages);
+        log.log(`[contextCompress] done: compressed ${compressible.length} msgs, ${tokensBefore} tokens`);
+        return true;
+      } else {
+        log.warn("[contextCompress] could not find firstKeptEntryId, skipping persistence");
+        return false;
+      }
+    } catch (err) {
+      log.error(`[contextCompress] failed: ${err.message}`);
+      return false;
+    }
   }
 }

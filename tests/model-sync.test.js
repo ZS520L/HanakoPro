@@ -82,6 +82,11 @@ const KNOWN_MODELS = {
     },
   },
   moonshot: {
+    "moonshot-v1-32k": {
+      name: "Moonshot V1 32K",
+      context: 32768,
+      maxOutput: 4096,
+    },
     "kimi-k2.6": {
       name: "Kimi K2.6",
       context: 262144,
@@ -616,6 +621,27 @@ describe("syncModels", () => {
       id: "kimi-k2.6",
       input: ["text", "image"],
       compat: { hanaVideoInput: true },
+    });
+  });
+
+  it("uses known Moonshot context window over dynamic catalog values", async () => {
+    const syncModels = await loadSync();
+
+    const providers = {
+      moonshot: {
+        base_url: "https://api.moonshot.cn/v1",
+        api: "openai-completions",
+        api_key: "sk-test",
+        models: [{ id: "moonshot-v1-32k", context: 1_000_000 }],
+      },
+    };
+
+    syncModels(providers, { modelsJsonPath });
+
+    const result = JSON.parse(fs.readFileSync(modelsJsonPath, "utf-8"));
+    expect(result.providers.moonshot.models[0]).toMatchObject({
+      id: "moonshot-v1-32k",
+      contextWindow: 32_768,
     });
   });
 

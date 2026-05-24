@@ -72,12 +72,6 @@ vi.mock('../../settings/tabs/agent/AgentToolsSection', () => ({
   AgentToolsSection: () => <div data-testid="agent-tools" />,
 }));
 
-vi.mock('../../settings/tabs/agent/AgentExperience', () => ({
-  parseExperience: () => [],
-  ExperienceBlock: () => null,
-  putExperience: vi.fn(),
-}));
-
 describe('AgentTab settings agent selection', () => {
   beforeEach(() => {
     hanaFetchMock.mockImplementation(async (_url: string, _opts?: RequestInit): Promise<MockResponse> => ({

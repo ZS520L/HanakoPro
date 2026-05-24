@@ -34,7 +34,14 @@ const initialStateFactory = (): MockState => ({
   drafts: {} as Record<string, string>,
   streamingSessions: [] as string[],
   inlineErrors: {} as Record<string, string | null>,
+  contextTokens: null,
+  contextWindow: null,
+  contextPercent: null,
+  contextBySession: {} as Record<string, unknown>,
+  toasts: [] as Array<{ id: number; text: string; type: string; dedupeKey?: string }>,
   addToast: vi.fn(),
+  removeToast: vi.fn(),
+  compressForkingSessions: [] as string[],
   activePanel: null,
   currentTab: 'chat',
   settingsModal: { open: false, activeTab: 'agent' },
@@ -198,6 +205,13 @@ function installStoreMethods() {
     if (entry) entry.items.push(item);
   });
   s.clearQuotedSelection = vi.fn();
+  s.addCompressForkingSession = vi.fn((path: string) => {
+    const sessions = mockState.compressForkingSessions as string[];
+    if (!sessions.includes(path)) sessions.push(path);
+  });
+  s.removeCompressForkingSession = vi.fn((path: string) => {
+    mockState.compressForkingSessions = (mockState.compressForkingSessions as string[]).filter(p => p !== path);
+  });
   s.setActivePanel = vi.fn((v: unknown) => { mockState.activePanel = v; });
   s.requestInputFocus = vi.fn();
   s.setDeskBasePath = vi.fn((path: string) => { mockState.deskBasePath = path; });
@@ -208,15 +222,17 @@ function installStoreMethods() {
 
 import { hanaFetch } from '../../hooks/use-hana-fetch';
 import { clearChat } from '../../stores/agent-actions';
+import { updateKeyed } from '../../stores/create-keyed-slice';
 import { loadDeskFiles } from '../../stores/desk-actions';
 import { bumpMessageLiveVersion, clearMessageLiveVersion } from '../../stores/message-live-version';
-import { archiveSession, createNewSession, ensureSession, loadMessages, loadSessions, pinSession, switchSession } from '../../stores/session-actions';
+import { archiveSession, compressForkSession, createNewSession, ensureSession, loadMessages, loadSessions, pinSession, switchSession } from '../../stores/session-actions';
 import { snapshotStreamBuffer } from '../../stores/stream-invalidator';
 
 const mockFetch = vi.mocked(hanaFetch);
 const mockClearChat = vi.mocked(clearChat);
 const mockLoadDeskFiles = vi.mocked(loadDeskFiles);
 const mockSnapshot = vi.mocked(snapshotStreamBuffer);
+const mockUpdateKeyed = vi.mocked(updateKeyed);
 
 function jsonResponse(body: unknown, ok = true): Response {
   return { ok, json: async () => body } as unknown as Response;
@@ -232,6 +248,7 @@ describe('session-actions', () => {
     mockFetch.mockReset();
     mockClearChat.mockReset();
     mockLoadDeskFiles.mockReset();
+    mockUpdateKeyed.mockReset();
     deskActionMocks.activateWorkspaceDesk.mockReset();
     deskActionMocks.activateWorkspaceDesk.mockImplementation(async (root?: string | null) => {
       const normalized = root || '';
@@ -958,6 +975,71 @@ describe('session-actions', () => {
       expect((mockState.sessionStreams as Record<string, unknown>)['/current']).toBeUndefined();
       expect((mockState.streamingSessions as string[])).toEqual([]);
       expect(mockState.currentSessionPath).toBe('/other');
+    });
+  });
+
+  describe('compressForkSession', () => {
+    it('removes the progress toast before showing success after fork completes', async () => {
+      mockState.currentSessionPath = '/old.jsonl';
+      mockState.toasts = [
+        { id: 7, text: '正在压缩…', type: 'info', dedupeKey: 'compress-fork' },
+      ];
+      mockState.addToast = vi.fn()
+        .mockReturnValueOnce(42)
+        .mockReturnValueOnce(43);
+      mockState.removeToast = vi.fn((id: number) => {
+        mockState.toasts = (mockState.toasts as Array<{ id: number }>).filter(t => t.id !== id);
+      });
+      (globalThis.window as unknown as { t: (key: string) => string }).t = (key: string) => ({
+        'settings.context.compressing': '正在压缩…',
+        'settings.context.compressSuccess': '已压缩并跳转到新对话',
+      }[key] || key);
+      mockSnapshot.mockReturnValue(null);
+      mockFetch
+        .mockResolvedValueOnce(jsonResponse({
+          path: '/new.jsonl',
+          workspaceFolders: [],
+          contextUsage: {
+            tokens: 320,
+            contextWindow: 8000,
+            percent: 4,
+            compressionAvailable: false,
+          },
+        }))
+        .mockResolvedValueOnce(jsonResponse({ messages: [], todos: [], sessionFiles: [], hasMore: false }))
+        .mockResolvedValueOnce(jsonResponse([{ path: '/new.jsonl' }]));
+
+      const ok = await compressForkSession('/old.jsonl');
+
+      expect(ok).toBe(true);
+      expect(mockState.removeToast).toHaveBeenCalledWith(7);
+      expect(mockState.removeToast).toHaveBeenCalledWith(42);
+      const removeToastMock = mockState.removeToast as ReturnType<typeof vi.fn>;
+      const removeProgressOrder = removeToastMock.mock.invocationCallOrder[1];
+      const loadMessagesOrder = mockFetch.mock.invocationCallOrder[1];
+      expect(removeProgressOrder).toBeLessThan(loadMessagesOrder);
+      expect(mockState.addToast).toHaveBeenNthCalledWith(
+        1,
+        '正在压缩…',
+        'info',
+        60000,
+        { dedupeKey: 'compress-fork' },
+      );
+      expect(mockState.addToast).toHaveBeenNthCalledWith(
+        2,
+        '已压缩并跳转到新对话',
+        'success',
+        3000,
+        { dedupeKey: 'compress-fork' },
+      );
+      expect(mockState.currentSessionPath).toBe('/new.jsonl');
+      expect(mockState.compressForkingSessions).toEqual([]);
+      expect(mockUpdateKeyed).toHaveBeenCalledWith(
+        'contextBySession',
+        '/new.jsonl',
+        { tokens: 320, window: 8000, percent: 4, compressionAvailable: false },
+        expect.any(Function),
+      );
     });
   });
 
