@@ -19,6 +19,7 @@ import { SESSION_PERMISSION_MODES } from "./session-permission-mode.js";
 import { collectMediaItems } from "../lib/tools/media-details.js";
 import { materializeBridgeInboundFiles } from "../lib/session-files/bridge-inbound-files.js";
 import { modelSupportsDirectVideoInput, modelSupportsVideoInput } from "../shared/model-capabilities.js";
+import { buildBridgeContext, bridgeContextIndexMeta } from "../lib/bridge/bridge-context.js";
 import {
   buildFreshCompactMetaPatch,
   buildFreshCompactSnapshot,
@@ -158,6 +159,7 @@ export class BridgeSessionManager {
     this._deps = deps;
     this._activeSessions = new Map();
     this._prePromptAbortControllers = new Map();
+    this._sessionPathBridgeContexts = new Map();
   }
 
   /** 活跃 bridge sessions（供 bridge-manager abort 用） */
@@ -228,6 +230,58 @@ export class BridgeSessionManager {
     if (Array.isArray(all)) return all.filter(Boolean);
     const focus = this._deps.getAgent?.();
     return focus ? [focus] : [];
+  }
+
+  _rememberBridgeContext(sessionPath, context) {
+    if (!sessionPath || !context?.isBridgeSession) return;
+    const raw = { ...context };
+    delete raw.platformLabel;
+    delete raw.notificationHint;
+    this._sessionPathBridgeContexts.set(path.resolve(sessionPath), raw);
+  }
+
+  _buildBridgeContext(sessionKey, meta = {}, opts = {}, agent = null) {
+    return buildBridgeContext({
+      ...(meta || {}),
+      sessionKey,
+      agentId: opts.agentId || agent?.id || null,
+      role: opts.guest === true ? "guest" : "owner",
+      guest: opts.guest === true,
+    }, getLocale());
+  }
+
+  _bridgeContextMeta(context, meta = {}) {
+    return bridgeContextIndexMeta(context, meta);
+  }
+
+  getBridgeContextForSessionPath(sessionPath, opts = {}) {
+    if (!sessionPath) return null;
+    const resolved = path.resolve(sessionPath);
+    const cached = this._sessionPathBridgeContexts.get(resolved);
+    if (cached) return buildBridgeContext(cached, getLocale());
+    const agents = opts.agentId
+      ? [this._resolveAgent(opts, "getBridgeContextForSessionPath")]
+      : this._listAgentsForReconcile();
+    for (const agent of agents) {
+      const bridgeDir = path.join(agent.sessionDir, "bridge");
+      const index = this.readIndex(agent);
+      for (const [sessionKey, raw] of Object.entries(index)) {
+        const entry = this._normalizeIndexEntry(raw);
+        if (!entry.file) continue;
+        const candidate = path.resolve(path.join(bridgeDir, entry.file));
+        if (candidate !== resolved) continue;
+        const fileRoot = String(entry.file).split(/[\\/]/)[0];
+        const context = buildBridgeContext({
+          ...entry,
+          role: entry.role || (fileRoot === "guests" ? "guest" : "owner"),
+          sessionKey,
+          agentId: agent.id,
+        }, getLocale());
+        this._rememberBridgeContext(resolved, context);
+        return context;
+      }
+    }
+    return null;
   }
 
   /**
@@ -374,6 +428,7 @@ export class BridgeSessionManager {
       let promptText = prompt;
       const isGuest = opts.guest === true;
       const agent = this._resolveAgent(opts, "executeExternalMessage");
+      const bridgeContext = this._buildBridgeContext(sessionKey, meta, opts, agent);
       const mm = this._deps.getModelManager();
       const bridgeDir = path.join(agent.sessionDir, "bridge");
       const subDir = opts.guest ? "guests" : "owner";
@@ -467,6 +522,7 @@ export class BridgeSessionManager {
       const activeSessionPath = session.sessionManager?.getSessionFile?.() || null;
       sessionPathRef.current = activeSessionPath;
       this._activeSessions.set(sessionKey, session);
+      this._rememberBridgeContext(activeSessionPath, bridgeContext);
 
       let displayAttachments = [];
       if (opts.inboundFiles?.length && !activeSessionPath) {
@@ -570,7 +626,7 @@ export class BridgeSessionManager {
         const { changed, file } = this._syncIndexEntry(index, sessionKey, raw, {
           bridgeDir,
           sessionPath,
-          meta,
+          meta: this._bridgeContextMeta(bridgeContext, meta),
         });
         if (changed) {
           if (existingFile && existingFile !== file) {
@@ -624,6 +680,7 @@ export class BridgeSessionManager {
   recordAssistantMessage(sessionKey, text, opts = {}) {
     const agent = this._resolveAgent(opts, "recordAssistantMessage");
     try {
+      const bridgeContext = this._buildBridgeContext(sessionKey, opts.meta, { ...opts, guest: false }, agent);
       const index = this.readIndex(agent);
       const raw = index[sessionKey];
       const existingFile = typeof raw === "string" ? raw : raw?.file || null;
@@ -659,10 +716,11 @@ export class BridgeSessionManager {
       mgr.appendMessage(this._buildRecordedAssistantMessage(agent, text));
 
       if (sessionPath) {
+        this._rememberBridgeContext(sessionPath, bridgeContext);
         const { changed } = this._syncIndexEntry(index, sessionKey, raw, {
           bridgeDir,
           sessionPath,
-          meta: opts.meta || null,
+          meta: this._bridgeContextMeta(bridgeContext, opts.meta || null),
         });
         if (changed) this.writeIndex(index, agent);
       }

@@ -58,6 +58,41 @@ describe("NotificationService", () => {
     });
   });
 
+  it("pins explicit bridge owner notifications to requested Bridge platforms", async () => {
+    const bridgeManager = {
+      sendProactive: vi.fn().mockResolvedValue({
+        platform: "wechat",
+        chatId: "wx-user",
+        sessionKey: "wx_dm_wx-user@hana",
+      }),
+    };
+    const service = new NotificationService({
+      emitDesktop: vi.fn(),
+      getBridgeManager: () => bridgeManager,
+    });
+
+    const result = await service.notify(
+      {
+        title: "发到微信",
+        body: "正文",
+        channels: ["bridge_owner"],
+        bridgePlatforms: ["wechat"],
+      },
+      { agentId: "hana" },
+    );
+
+    expect(bridgeManager.sendProactive).toHaveBeenCalledWith(
+      "发到微信\n\n正文",
+      "hana",
+      { contextPolicy: "record_when_delivered", bridgePlatforms: ["wechat"] },
+    );
+    expect(result.deliveries[0]).toMatchObject({
+      channel: "bridge_owner",
+      status: "sent",
+      platform: "wechat",
+    });
+  });
+
   it("reports explicit bridge owner delivery failure when the channel is unavailable", async () => {
     const service = new NotificationService({
       emitDesktop: vi.fn(),
@@ -95,6 +130,29 @@ describe("NotificationService", () => {
       channel: "sms",
       status: "failed",
       error: "unsupported notification channel: sms",
+    }]);
+  });
+
+  it("fails unsupported Bridge platform preferences", async () => {
+    const bridgeManager = {
+      sendProactive: vi.fn(),
+    };
+    const service = new NotificationService({
+      emitDesktop: vi.fn(),
+      getBridgeManager: () => bridgeManager,
+    });
+
+    const result = await service.notify(
+      { title: "AI 日报", body: "正文", channels: ["bridge_owner"], bridgePlatforms: ["sms"] },
+      { agentId: "hana" },
+    );
+
+    expect(bridgeManager.sendProactive).not.toHaveBeenCalled();
+    expect(result.ok).toBe(false);
+    expect(result.deliveries).toEqual([{
+      channel: "bridge_owner",
+      status: "failed",
+      error: "unsupported bridge platform: sms",
     }]);
   });
 });

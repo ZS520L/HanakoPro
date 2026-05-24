@@ -22,6 +22,7 @@ describe("current_status tool", () => {
     expect(tool.description).toContain("hour/minute");
     expect(tool.description).toContain('key="logical_date"');
     expect(tool.description).toContain("does not return hour/minute/second");
+    expect(tool.description).toContain("Bridge platform context");
   });
 
   it("lists available status keys without returning live status values", async () => {
@@ -41,6 +42,7 @@ describe("current_status tool", () => {
       "model",
       "ui_context",
       "session_files",
+      "bridge_context",
     ]);
     expect(payload.usage).toContain("list");
     expect(payload.usage).toContain("get");
@@ -256,6 +258,64 @@ describe("current_status tool", () => {
       },
     });
     expect(JSON.stringify(payload)).not.toContain("internalOnly");
+  });
+
+  it("returns normalized Bridge context for get bridge_context", async () => {
+    const tool = createCurrentStatusTool({
+      getBridgeContext: (sessionPath) => sessionPath.endsWith("s1.jsonl")
+        ? {
+            isBridgeSession: true,
+            platform: "wechat",
+            platformLabel: "微信",
+            chatType: "dm",
+            role: "owner",
+            sessionKey: "wx_dm_wx-user@hana",
+            agentId: "hana",
+            userId: "wx-user",
+            chatId: "wx-user",
+            notificationHint: {
+              channels: ["bridge_owner"],
+              bridgePlatforms: ["wechat"],
+              contextPolicy: "record_when_delivered",
+            },
+          }
+        : null,
+    });
+
+    const payload = textPayload(await tool.execute("call_1", { action: "get", key: "bridge_context" }, null, null, makeCtx()));
+
+    expect(payload).toEqual({
+      bridge_context: {
+        isBridgeSession: true,
+        platform: "wechat",
+        platformLabel: "微信",
+        chatType: "dm",
+        role: "owner",
+        sessionKey: "wx_dm_wx-user@hana",
+        agentId: "hana",
+        userId: "wx-user",
+        chatId: "wx-user",
+        notificationHint: {
+          channels: ["bridge_owner"],
+          bridgePlatforms: ["wechat"],
+          contextPolicy: "record_when_delivered",
+        },
+      },
+    });
+  });
+
+  it("returns a non-Bridge shape outside Bridge sessions", async () => {
+    const tool = createCurrentStatusTool({
+      getBridgeContext: () => null,
+    });
+
+    const payload = textPayload(await tool.execute("call_1", { action: "get", key: "bridge_context" }, null, null, makeCtx()));
+
+    expect(payload).toEqual({
+      bridge_context: {
+        isBridgeSession: false,
+      },
+    });
   });
 
   it("returns a clear error for unknown keys", async () => {

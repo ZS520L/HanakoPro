@@ -106,6 +106,36 @@ describe("BridgeSessionManager teardown", () => {
     fs.rmSync(rootDir, { recursive: true, force: true });
   });
 
+  it("resolves Bridge context for indexed session paths", () => {
+    const agent = makeAgent(rootDir);
+    const sessionFile = path.join(agent.sessionDir, "bridge", "owner", "wechat.jsonl");
+    fs.mkdirSync(path.dirname(sessionFile), { recursive: true });
+    fs.writeFileSync(sessionFile, "", "utf-8");
+    const manager = new BridgeSessionManager(makeDeps(agent));
+    manager.writeIndex({
+      "wx_dm_wx-user@agent-a": {
+        file: "owner/wechat.jsonl",
+        userId: "wx-user",
+        chatId: "wx-user",
+      },
+    }, agent);
+
+    expect(manager.getBridgeContextForSessionPath(sessionFile, { agentId: "agent-a" })).toMatchObject({
+      isBridgeSession: true,
+      platform: "wechat",
+      platformLabel: "微信",
+      chatType: "dm",
+      role: "owner",
+      sessionKey: "wx_dm_wx-user@agent-a",
+      agentId: "agent-a",
+      notificationHint: {
+        channels: ["bridge_owner"],
+        bridgePlatforms: ["wechat"],
+        contextPolicy: "record_when_delivered",
+      },
+    });
+  });
+
   it("executeExternalMessage 结束后走 emit -> unsub -> dispose", async () => {
     const agent = makeAgent(rootDir);
     const mgrPath = path.join(agent.sessionDir, "bridge", "owner", "s1.jsonl");

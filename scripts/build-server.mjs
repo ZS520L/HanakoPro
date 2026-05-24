@@ -491,3 +491,4 @@ if (isWin) {
 console.log("[build-server] wrapper created");
 
 console.log("[build-server] Done!");
+process.exit(0);

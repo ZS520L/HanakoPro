@@ -261,13 +261,13 @@ jobs:
           MISSING=()
           echo "$ASSETS" | grep -qx 'latest-mac.yml' || MISSING+=("latest-mac.yml")
           echo "$ASSETS" | grep -qx 'latest.yml' || MISSING+=("latest.yml")
-          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-arm64\.dmg$' || MISSING+=("macOS-arm64.dmg")
-          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-arm64\.zip$' || MISSING+=("macOS-arm64.zip")
-          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-x64\.dmg$' || MISSING+=("macOS-x64.dmg")
-          echo "$ASSETS" | grep -qE '^Hanako-.*-macOS-x64\.zip$' || MISSING+=("macOS-x64.zip")
-          echo "$ASSETS" | grep -qE '^Hanako-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
-          echo "$ASSETS" | grep -qE '^Hanako-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
-          echo "$ASSETS" | grep -qE '^Hanako-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
+          echo "$ASSETS" | grep -qE '^HanakoPro-.*-macOS-arm64\.dmg$' || MISSING+=("macOS-arm64.dmg")
+          echo "$ASSETS" | grep -qE '^HanakoPro-.*-macOS-arm64\.zip$' || MISSING+=("macOS-arm64.zip")
+          echo "$ASSETS" | grep -qE '^HanakoPro-.*-macOS-x64\.dmg$' || MISSING+=("macOS-x64.dmg")
+          echo "$ASSETS" | grep -qE '^HanakoPro-.*-macOS-x64\.zip$' || MISSING+=("macOS-x64.zip")
+          echo "$ASSETS" | grep -qE '^HanakoPro-.*-Windows-x64\.exe$' || MISSING+=("Windows-x64.exe")
+          echo "$ASSETS" | grep -qE '^HanakoPro-.*-Linux-(x64|x86_64)\.AppImage$' || MISSING+=("Linux AppImage")
+          echo "$ASSETS" | grep -qE '^HanakoPro-.*-Linux-(x64|amd64)\.deb$' || MISSING+=("Linux deb")
 
           # 清洁性检查：不应该有 blockmap 漏进来
           if echo "$ASSETS" | grep -qE '\.blockmap$'; then

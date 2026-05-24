@@ -574,6 +574,55 @@ describe("BridgeManager._handleMessage", () => {
       });
     });
 
+    it("pins proactive Bridge delivery to requested platforms", async () => {
+      const { bm, engine } = createMocks();
+      const telegramAdapter = {
+        sendReply: vi.fn().mockResolvedValue(),
+      };
+      const wechatAdapter = {
+        capabilities: { proactive: false },
+        canReply: vi.fn().mockReturnValue(true),
+        sendReply: vi.fn().mockResolvedValue(),
+      };
+      bm._platforms.clear();
+      bm._platforms.set("telegram:hana", {
+        adapter: telegramAdapter,
+        status: "connected",
+        agentId: "hana",
+        platform: "telegram",
+      });
+      bm._platforms.set("wechat:hana", {
+        adapter: wechatAdapter,
+        status: "connected",
+        agentId: "hana",
+        platform: "wechat",
+      });
+      engine.getAgent.mockImplementation((id) => {
+        if (id === "hana") return { agentName: "TestAgent", config: { bridge: { telegram: { owner: "owner123" }, wechat: {} } }, sessionDir: os.tmpdir() };
+        return null;
+      });
+      engine.getBridgeIndex = vi.fn().mockReturnValue({
+        "tg_dm_owner123@hana": {
+          file: "owner/tg.jsonl",
+          userId: "owner123",
+        },
+        "wx_dm_wx-user@hana": {
+          file: "owner/wx.jsonl",
+          userId: "wx-user",
+        },
+      });
+
+      const result = await bm.sendProactive("hello", "hana", { bridgePlatforms: ["wechat"] });
+
+      expect(telegramAdapter.sendReply).not.toHaveBeenCalled();
+      expect(wechatAdapter.sendReply).toHaveBeenCalledWith("wx-user", "hello");
+      expect(result).toMatchObject({
+        platform: "wechat",
+        chatId: "wx-user",
+        sessionKey: "wx_dm_wx-user@hana",
+      });
+    });
+
     it("passes message_id when downloading feishu image attachments", async () => {
       const { bm, hub } = createMocks();
       const feishuAdapter = {

@@ -574,6 +574,9 @@ export class HanaEngine {
   setBridgeReceiptEnabled(v) { this._prefs.setBridgeReceiptEnabled(v); }
   getBridgeMediaPublicBaseUrl() { return this._prefs.getBridgeMediaPublicBaseUrl(); }
   setBridgeMediaPublicBaseUrl(v) { return this._prefs.setBridgeMediaPublicBaseUrl(v); }
+  getBridgeContextForSessionPath(sessionPath, opts = {}) {
+    return this._bridge?.getBridgeContextForSessionPath?.(sessionPath, opts) || null;
+  }
   getSharedModels() { return this._configCoord.getSharedModels(); }
   setSharedModels(p) { return this._configCoord.setSharedModels(p); }
   isVisionAuxiliaryEnabled() { return this.getSharedModels()?.vision_enabled === true; }
