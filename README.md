@@ -10,9 +10,11 @@
   <a href="https://github.com/liliMozi/openhanako">上游项目 OpenHanako</a>
 </p>
 
-[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
-[![Base](https://img.shields.io/badge/base-Hanako%20v0.194.2-purple.svg)](https://github.com/liliMozi/openhanako)
-[![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)](https://github.com/ZS520L/HanakoPro/releases)
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://github.com/liliMozi/openhanako"><img src="https://img.shields.io/badge/base-Hanako%20v0.194.2-purple.svg" alt="Base"></a>
+  <a href="https://github.com/ZS520L/HanakoPro/releases"><img src="https://img.shields.io/badge/platform-Windows-lightgrey.svg" alt="Platform"></a>
+</p>
 
 ---
 
