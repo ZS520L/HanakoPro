@@ -40,6 +40,7 @@ export function normalizeToolDescriptionOverrides(value) {
     result.push({
       name,
       description: Object.prototype.hasOwnProperty.call(item, "description") ? normalizeText(item.description) : undefined,
+      enabled: !hasOwn(item, "enabled") || item.enabled !== false,
       parameters,
     });
   }
@@ -104,7 +105,11 @@ export function applyToolDescriptionOverrides(tools = [], overrides = []) {
   const normalized = normalizeToolDescriptionOverrides(overrides);
   if (!normalized.length) return tools;
   const overrideMap = new Map(normalized.map((item) => [item.name, item]));
-  return (Array.isArray(tools) ? tools : []).map((tool) => applyToolDescriptionOverride(tool, overrideMap.get(tool?.name)));
+  const updated = (Array.isArray(tools) ? tools : []).map((tool) => applyToolDescriptionOverride(tool, overrideMap.get(tool?.name)));
+  // 过滤掉 enabled === false 的工具
+  const disabledSet = new Set(normalized.filter((o) => o.enabled === false).map((o) => o.name));
+  if (!disabledSet.size) return updated;
+  return updated.filter((tool) => !disabledSet.has(tool?.name));
 }
 
 function applyToolDescriptionOverride(tool, override) {

@@ -15,7 +15,7 @@ import { switchSession, archiveSession, renameSession, pinSession } from '../sto
 import { updateKeyed } from '../stores/create-keyed-slice';
 import type { Session, Agent } from '../types';
 import { AgentAvatar, resolveAgentDisplayInfo } from '../utils/agent-display';
-import { buildSessionSections } from './session-sections';
+import { buildSessionSections, type SessionViewMode } from './session-sections';
 import { ContextMenu, type ContextMenuItem } from '../ui/ContextMenu';
 import { renderMarkdown } from '../utils/markdown';
 import styles from './SessionList.module.css';
@@ -57,7 +57,19 @@ function normalizeBrowserSessionStates(data: unknown): Record<string, BrowserSes
 
 export function SessionList() {
   return <SessionListInner />;
+}interface SessionSearchResult {
+  path: string;
+  title: string | null;
+  firstMessage: string;
+  modified: string | null;
+  messageCount: number;
+  agentId: string | null;
+  agentName: string | null;
+  pinnedAt: string | null;
+  matchType: 'title' | 'content';
+  snippet: string | null;
 }
+
 
 // ── 内部组件 ──
 
@@ -73,6 +85,8 @@ function SessionListInner() {
 
   const [browserSessions, setBrowserSessions] = useState<Record<string, BrowserSessionState>>({});
   const closingBrowserSessionsRef = useRef(new Set<string>());
+  const [searchQuery, setSearchQuery] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
 
   const setVisibleBrowserSessions = useCallback((data: unknown) => {
     const states = normalizeBrowserSessionStates(data);
@@ -125,16 +139,187 @@ function SessionListInner() {
     }
   }, []);
 
+  // 搜索过滤：标题或首条消息包含关键词（即时）
+  const filteredSessions = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return sessions;
+    return sessions.filter(s => {
+      if (s.title && s.title.toLowerCase().includes(q)) return true;
+      if (s.firstMessage && s.firstMessage.toLowerCase().includes(q)) return true;
+      return false;
+    });
+  }, [sessions, searchQuery]);
+
+  // 后端全文搜索结果
+  const [deepResults, setDeepResults] = useState<SessionSearchResult[]>([]);
+  const [deepSearching, setDeepSearching] = useState(false);
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q) {
+      setDeepResults([]);
+      setDeepSearching(false);
+      return;
+    }
+    // 防抖 300ms 后触发后端搜索
+    setDeepSearching(true);
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    searchTimerRef.current = setTimeout(() => {
+      hanaFetch(`/api/sessions/search?q=${encodeURIComponent(q)}`)
+        .then(r => r.json())
+        .then((data: { results: SessionSearchResult[]; error?: string }) => {
+          if (data.error) throw new Error(data.error);
+          setDeepResults(data.results || []);
+          setDeepSearching(false);
+        })
+        .catch(() => {
+          setDeepResults([]);
+          setDeepSearching(false);
+        });
+    }, 300);
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
+    };
+  }, [searchQuery]);
+
+  // 合并客户端和后端结果（按 path 去重，客户端优先）
+  const mergedSearchResults = useMemo(() => {
+    const q = searchQuery.trim();
+    if (!q) return null;
+    const seen = new Set<string>();
+    const merged: Array<Session & { _matchType?: string; _snippet?: string | null }> = [];
+    // 客户端结果优先
+    for (const s of filteredSessions) {
+      seen.add(s.path);
+      merged.push({ ...s, _matchType: 'title', _snippet: null });
+    }
+    // 后端全文匹配（不重复）
+    for (const r of deepResults) {
+      if (seen.has(r.path)) continue;
+      seen.add(r.path);
+      merged.push({
+        path: r.path,
+        title: r.title,
+        firstMessage: r.firstMessage || '',
+        modified: r.modified || '',
+        messageCount: r.messageCount || 0,
+        agentId: r.agentId || null,
+        agentName: r.agentName || null,
+        pinnedAt: r.pinnedAt || null,
+        _matchType: r.matchType,
+        _snippet: r.snippet,
+      });
+    }
+    return merged;
+  }, [filteredSessions, deepResults, searchQuery]);
+
+  // Ctrl+F / Cmd+F 聚焦搜索框
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   if (sessions.length === 0) {
     return <div className={styles.sessionEmpty}>{t('sidebar.empty')}</div>;
   }
 
-  const sections = buildSessionSections(sessions, { mode: 'time' });
+  const [viewMode, setViewMode] = useState<SessionViewMode>(() => {
+    const saved = localStorage.getItem('hana-session-view-mode');
+    return saved === 'project' ? 'project' : 'time';
+  });
+
+  const toggleViewMode = useCallback(() => {
+    setViewMode(prev => {
+      const next = prev === 'time' ? 'project' : 'time';
+      localStorage.setItem('hana-session-view-mode', next);
+      return next;
+    });
+  }, []);
+
+  const displaySessions = searchQuery.trim() ? (mergedSearchResults || []) : sessions;
+  const sections = buildSessionSections(displaySessions, { mode: viewMode });
   const activeSessionPath = pendingSessionSwitchPath || currentSessionPath;
+  const hasSearchResults = sections.length > 0;
+
+  // 当左侧搜索词改变时，更新 store 中的搜索查询
+  useEffect(() => {
+    if (searchQuery.trim()) {
+      const { setChatSearchQuery } = useStore.getState();
+      setChatSearchQuery(searchQuery.trim());
+    }
+  }, [searchQuery]);
 
   return (
     <>
+      <div className={styles.sessionSearchBar}>
+        <svg className={styles.sessionSearchIcon} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <circle cx="11" cy="11" r="8" />
+          <line x1="21" y1="21" x2="16.65" y2="16.65" />
+        </svg>
+        <input
+          ref={searchInputRef}
+          className={styles.sessionSearchInput}
+          type="text"
+          placeholder={t('session.search.placeholder')}
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+        />
+        {searchQuery && (
+          <button
+            className={styles.sessionSearchClear}
+            onClick={() => { setSearchQuery(''); searchInputRef.current?.focus(); }}
+            title={t('session.search.clear')}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+      {!hasSearchResults && searchQuery && (
+        <div className={styles.sessionEmpty}>{t('session.search.noResults')}</div>
+      )}
+      <div className={styles.sessionViewModeToggle}>
+        <button
+          className={`${styles.sessionViewModeBtn} ${viewMode === 'time' ? styles.sessionViewModeBtnActive : ''}`}
+          onClick={() => { if (viewMode !== 'time') toggleViewMode(); }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+          </svg>
+          <span>{t('sidebar.byTime')}</span>
+        </button>
+        <button
+          className={`${styles.sessionViewModeBtn} ${viewMode === 'project' ? styles.sessionViewModeBtnActive : ''}`}
+          onClick={() => { if (viewMode !== 'project') toggleViewMode(); }}
+        >
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span>{t('sidebar.byProject')}</span>
+        </button>
+      </div>
       {sections.map(section => {
+        if (section.kind === 'project') {
+          return (
+            <ProjectSection
+              key={section.id}
+              section={section}
+              activeSessionPath={activeSessionPath}
+              pendingNewSession={pendingNewSession}
+              streamingSessions={streamingSessions}
+              agents={agents}
+              browserSessions={browserSessions}
+              onCloseBrowser={handleCloseBrowserSession}
+            />
+          );
+        }
+
         const items = section.items.map(s => (
           <SessionItem
             key={s.path}
@@ -145,6 +330,7 @@ function SessionListInner() {
             agents={agents}
             browserState={browserSessions[s.path] || null}
             onCloseBrowser={handleCloseBrowserSession}
+            searchSnippet={(s as any)._snippet || null}
           />
         ));
 
@@ -178,7 +364,7 @@ function SessionListInner() {
 
 // ── Session Item ──
 
-const SessionItem = memo(function SessionItem({ session: s, isActive, isStreaming, isPinned, agents, browserState, onCloseBrowser }: {
+const SessionItem = memo(function SessionItem({ session: s, isActive, isStreaming, isPinned, agents, browserState, onCloseBrowser, searchSnippet }: {
   session: Session;
   isActive: boolean;
   isStreaming: boolean;
@@ -186,17 +372,26 @@ const SessionItem = memo(function SessionItem({ session: s, isActive, isStreamin
   agents: Agent[];
   browserState: BrowserSessionState | null;
   onCloseBrowser: (sessionPath: string) => void;
+  searchSnippet?: string | null;
 }) {
   const { t } = useI18n();
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState('');
   const [menuPosition, setMenuPosition] = useState<{ x: number; y: number } | null>(null);
   const [summaryPreviewPosition, setSummaryPreviewPosition] = useState<{ x: number; y: number } | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleClick = useCallback(() => {
     if (editing) return;
+    // 获取当前搜索查询
+    const currentSearchQuery = useStore.getState().chatSearchQuery;
     switchSession(s.path);
+    // 如果有搜索查询，传递给右侧
+    if (currentSearchQuery) {
+      const { setChatSearchQuery } = useStore.getState();
+      setChatSearchQuery(currentSearchQuery);
+    }
   }, [s.path, editing]);
 
   const handleArchive = useCallback((e: React.MouseEvent) => {
@@ -307,6 +502,9 @@ const SessionItem = memo(function SessionItem({ session: s, isActive, isStreamin
               {s.title || s.firstMessage || t('session.untitled')}
             </div>
           )}
+          {!editing && searchSnippet && (
+            <div className={styles.sessionItemSnippet}>{searchSnippet}</div>
+          )}
         </div>
 
         {!editing && (
@@ -374,6 +572,7 @@ const SessionItem = memo(function SessionItem({ session: s, isActive, isStreamin
           onClose={() => setMenuPosition(null)}
           onRename={beginRename}
           onShowSummary={(position) => setSummaryPreviewPosition(position)}
+          onShowDetails={() => setShowDetails(true)}
         />
       )}
       {summaryPreviewPosition && (
@@ -381,6 +580,12 @@ const SessionItem = memo(function SessionItem({ session: s, isActive, isStreamin
           session={s}
           position={summaryPreviewPosition}
           onClose={() => setSummaryPreviewPosition(null)}
+        />
+      )}
+      {showDetails && (
+        <SessionDetailsModal
+          session={s}
+          onClose={() => setShowDetails(false)}
         />
       )}
     </>
@@ -407,6 +612,7 @@ const SessionContextMenu = memo(function SessionContextMenu({
   onClose,
   onRename,
   onShowSummary,
+  onShowDetails,
 }: {
   session: Session;
   isPinned: boolean;
@@ -414,6 +620,7 @@ const SessionContextMenu = memo(function SessionContextMenu({
   onClose: () => void;
   onRename: () => void;
   onShowSummary: (position: { x: number; y: number }) => void;
+  onShowDetails: () => void;
 }) {
   const { t } = useI18n();
   const items = useMemo<ContextMenuItem[]>(() => [
@@ -421,6 +628,10 @@ const SessionContextMenu = memo(function SessionContextMenu({
       label: t('session.summary.open'),
       disabled: session.hasSummary !== true,
       action: () => onShowSummary(position),
+    },
+    {
+      label: t('session.details.open'),
+      action: onShowDetails,
     },
     {
       label: t(isPinned ? 'session.unpin' : 'session.pin'),
@@ -435,7 +646,7 @@ const SessionContextMenu = memo(function SessionContextMenu({
       danger: true,
       action: () => archiveSession(session.path),
     },
-  ], [isPinned, onRename, onShowSummary, position, session.path, t]);
+  ], [isPinned, onRename, onShowSummary, onShowDetails, position, session.path, t]);
 
   return (
     <ContextMenu
@@ -558,6 +769,125 @@ const SessionSummaryPreviewCard = memo(function SessionSummaryPreviewCard({
   );
 });
 
+interface SessionDetails {
+  path: string;
+  model?: { id: string; provider: string; name: string } | null;
+  thinkingLevel?: string | null;
+  permissionMode?: string | null;
+  memoryEnabled?: boolean;
+  experienceEnabled?: boolean;
+  systemPrompt?: string | null;
+  toolNames?: string[] | null;
+  workspaceFolders?: string[];
+}
+
+const SessionDetailsModal = memo(function SessionDetailsModal({
+  session,
+  onClose,
+}: {
+  session: Session;
+  onClose: () => void;
+}) {
+  const { t } = useI18n();
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const [details, setDetails] = useState<SessionDetails | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    hanaFetch(`/api/sessions/details?path=${encodeURIComponent(session.path)}`)
+      .then(res => res.json())
+      .then((data: SessionDetails & { error?: string }) => {
+        if (cancelled) return;
+        if (data.error) throw new Error(data.error);
+        setDetails(data);
+        setLoading(false);
+      })
+      .catch((err: Error) => {
+        if (cancelled) return;
+        setError(err.message);
+        setLoading(false);
+      });
+    return () => { cancelled = true; };
+  }, [session.path]);
+
+  // 关闭：点击背景或按 Escape
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [onClose]);
+
+  const tLabel = (key: string, fallback: string) => {
+    const v = t(key);
+    return v !== key ? v : fallback;
+  };
+
+  return createPortal(
+    <div
+      ref={overlayRef}
+      className={styles.sessionDetailsOverlay}
+      onMouseDown={(e) => { if (e.target === overlayRef.current) onClose(); }}
+    >
+      <div className={styles.sessionDetailsDialog}>
+        <div className={styles.sessionDetailsHeader}>
+          <h3>{tLabel('session.details.title', '会话详情')}</h3>
+          <button className={styles.sessionDetailsClose} onClick={onClose}>✕</button>
+        </div>
+        <div className={styles.sessionDetailsBody}>
+          {loading && <p className={styles.sessionDetailsLoading}>{tLabel('session.details.loading', '加载中…')}</p>}
+          {error && <p className={styles.sessionDetailsError}>{error}</p>}
+          {details && (
+            <>
+              <div className={styles.sessionDetailsGrid}>
+                <div className={styles.sessionDetailsField}>
+                  <span className={styles.sessionDetailsLabel}>{tLabel('session.details.model', '模型')}</span>
+                  <span className={styles.sessionDetailsValue}>{details.model?.name || details.model?.id || '—'}</span>
+                </div>
+                <div className={styles.sessionDetailsField}>
+                  <span className={styles.sessionDetailsLabel}>{tLabel('session.details.thinking', '思考强度')}</span>
+                  <span className={styles.sessionDetailsValue}>{details.thinkingLevel || '—'}</span>
+                </div>
+                <div className={styles.sessionDetailsField}>
+                  <span className={styles.sessionDetailsLabel}>{tLabel('session.details.permission', '权限模式')}</span>
+                  <span className={styles.sessionDetailsValue}>{details.permissionMode || '—'}</span>
+                </div>
+                <div className={styles.sessionDetailsField}>
+                  <span className={styles.sessionDetailsLabel}>{tLabel('session.details.memory', '记忆')}</span>
+                  <span className={styles.sessionDetailsValue}>{details.memoryEnabled ? tLabel('session.details.on', '开') : tLabel('session.details.off', '关')}</span>
+                </div>
+              </div>
+
+              {details.systemPrompt && (
+                <div className={styles.sessionDetailsSection}>
+                  <h4>{tLabel('session.details.systemPrompt', '系统提示词')}</h4>
+                  <pre className={styles.sessionDetailsPrompt}>{details.systemPrompt}</pre>
+                </div>
+              )}
+
+              {details.toolNames && details.toolNames.length > 0 && (
+                <div className={styles.sessionDetailsSection}>
+                  <h4>{tLabel('session.details.tools', `工具列表 (${details.toolNames.length})`)}</h4>
+                  <div className={styles.sessionDetailsToolList}>
+                    {details.toolNames.map(name => (
+                      <span key={name} className={styles.sessionDetailsToolChip}>{name}</span>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+});
+
 function formatRcPlatform(platform: string) {
   const lower = (platform || '').toLowerCase();
   if (lower === 'tg' || lower === 'telegram') return 'Telegram';
@@ -566,6 +896,94 @@ function formatRcPlatform(platform: string) {
   if (lower === 'qq') return 'QQ';
   return platform || 'Bridge';
 }
+
+// ── Project Section (collapsible, with date sub-sections) ──
+
+const ProjectSection = memo(function ProjectSection({ section, activeSessionPath, pendingNewSession, streamingSessions, agents, browserSessions, onCloseBrowser }: {
+  section: { id: string; title: string; cwd: string | null; subSections: { group: string; titleKey: string; items: Session[] }[] };
+  activeSessionPath: string | null;
+  pendingNewSession: boolean;
+  streamingSessions: string[];
+  agents: Agent[];
+  browserSessions: Record<string, BrowserSessionState>;
+  onCloseBrowser: (sessionPath: string) => void;
+}) {
+  const { t } = useI18n();
+  const [collapsed, setCollapsed] = useState(false);
+  // Sub-section collapse state
+  const [collapsedSubs, setCollapsedSubs] = useState<Set<string>>(new Set());
+
+  const toggleSub = useCallback((group: string) => {
+    setCollapsedSubs(prev => {
+      const next = new Set(prev);
+      if (next.has(group)) next.delete(group); else next.add(group);
+      return next;
+    });
+  }, []);
+
+  const totalCount = section.subSections.reduce((sum, sub) => sum + sub.items.length, 0);
+
+  return (
+    <section className={styles.projectSection}>
+      <button
+        className={styles.projectSectionHeader}
+        onClick={() => setCollapsed(c => !c)}
+        title={collapsed ? t('sidebar.expand') : t('sidebar.collapse')}
+      >
+        <svg
+          className={`${styles.projectSectionChevron} ${collapsed ? styles.chevronCollapsed : ''}`}
+          width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+        >
+          <polyline points="6 9 12 15 18 9" />
+        </svg>
+        <svg className={styles.projectSectionIcon} width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
+        </svg>
+        <span className={styles.projectSectionTitle}>{section.title}</span>
+        <span className={styles.projectSectionCount}>{totalCount}</span>
+      </button>
+      {!collapsed && (
+        <div className={styles.projectSectionBody}>
+          {section.subSections.map(sub => (
+            <div key={sub.group} className={styles.projectSubSection}>
+              <button
+                className={styles.projectSubHeader}
+                onClick={() => toggleSub(sub.group)}
+                title={collapsedSubs.has(sub.group) ? t('sidebar.expand') : t('sidebar.collapse')}
+              >
+                <svg
+                  className={`${styles.projectSubChevron} ${collapsedSubs.has(sub.group) ? styles.chevronCollapsed : ''}`}
+                  width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"
+                >
+                  <polyline points="6 9 12 15 18 9" />
+                </svg>
+                <span className={styles.projectSubTitle}>{t(sub.titleKey)}</span>
+                <span className={styles.projectSubCount}>{sub.items.length}</span>
+              </button>
+              {!collapsedSubs.has(sub.group) && (
+                <div className={styles.projectSubBody}>
+                  {sub.items.map(s => (
+                    <SessionItem
+                      key={s.path}
+                      session={s}
+                      isActive={!pendingNewSession && s.path === activeSessionPath}
+                      isStreaming={streamingSessions.includes(s.path)}
+                      isPinned={!!s.pinnedAt}
+                      agents={agents}
+                      browserState={browserSessions[s.path] || null}
+                      onCloseBrowser={onCloseBrowser}
+                      searchSnippet={(s as any)._snippet || null}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+});
 
 // ── Agent Avatar Badge ──
 

@@ -136,6 +136,9 @@ function normalizeHistoryTimestamp(value: number | string | null | undefined): n
 export function buildItemsFromHistory(data: HistoryApiResponse): ChatListItem[] {
   const items: ChatListItem[] = [];
 
+  // 防御：服务端可能返回 { error: "..." } 等非预期形状
+  const messages = Array.isArray(data?.messages) ? data.messages : [];
+
   // 按 afterIndex 分组统一 blocks
   const allBlocks = normalizeBlocks(data);
   const blockMap: Record<number, Array<any>> = {};
@@ -143,8 +146,8 @@ export function buildItemsFromHistory(data: HistoryApiResponse): ChatListItem[] 
     (blockMap[b.afterIndex] ??= []).push(b);
   }
 
-  for (let i = 0; i < data.messages.length; i++) {
-    const m = data.messages[i];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
     const id = m.id || `hist-${i}`;
     const timestamp = normalizeHistoryTimestamp(m.timestamp);
 

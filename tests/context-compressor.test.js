@@ -25,6 +25,25 @@ describe("resolveContextConfig", () => {
     expect(config.protect.systemPrompt).toBe(false);
     expect(config.protect.pinnedMemory).toBe(true);
   });
+
+  it("normalizes legacy utility compression model to custom mode", () => {
+    const config = resolveContextConfig({
+      context: { compressionModel: "utility" },
+    });
+    expect(config.compressionModel).toBe("custom");
+    expect(config.compressionCustomModel).toBe(null);
+  });
+
+  it("keeps a valid custom compression model reference", () => {
+    const config = resolveContextConfig({
+      context: {
+        compressionModel: "custom",
+        compressionCustomModel: { id: "gpt-4.1-mini", provider: "openai" },
+      },
+    });
+    expect(config.compressionModel).toBe("custom");
+    expect(config.compressionCustomModel).toEqual({ id: "gpt-4.1-mini", provider: "openai" });
+  });
 });
 
 describe("shouldTriggerCompression", () => {

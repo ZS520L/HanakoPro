@@ -74,8 +74,8 @@ function petChatErrorMessage(message: string): string {
 
 function fallbackState(): DesktopPetState {
   return {
-    enabled: true,
-    visible: true,
+    enabled: false,
+    visible: false,
     backgroundOnly: true,
     alwaysOnTop: true,
     clickThrough: false,

@@ -17,6 +17,7 @@ export interface ContextCompressionConfig {
   mode: string;
   customPrompt: string;
   compressionModel: string;
+  compressionCustomModel: { id: string; provider: string } | null;
   protect: ContextCompressionProtect;
 }
 

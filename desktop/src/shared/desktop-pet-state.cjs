@@ -3,8 +3,8 @@
 const VALID_MOODS = new Set(["idle", "thinking", "talking", "working", "happy", "error", "cute", "sad", "missing"]);
 
 const DEFAULT_DESKTOP_PET_STATE = Object.freeze({
-  enabled: true,
-  visible: true,
+  enabled: false,
+  visible: false,
   backgroundOnly: false,
   alwaysOnTop: true,
   clickThrough: false,

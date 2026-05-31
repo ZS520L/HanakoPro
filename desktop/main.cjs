@@ -838,6 +838,7 @@ async function _spawnServerOnce(serverInfoPath) {
  * 持久监控 server 进程：崩溃后自动重启一次，再失败则写 crash log 并通知用户
  */
 let _serverRestartAttempts = 0;
+let _isRestartingServer = false; // 手动重启中，monitor 完全跳过不弹窗
 function monitorServer() {
   if (!serverProcess) return;
   serverProcess.on("exit", async (code, signal) => {
@@ -845,7 +846,7 @@ function monitorServer() {
     // shutdownServer 主动 kill。否则这里会和 quitAndInstall / shutdownServer
     // 抢时间去 spawn 新 server，造成 serverProcess 被并发改写成 null，
     // 后续 serverProcess.unref() 报 "Cannot read properties of null"。
-    if (isQuitting || _isUpdating || isExitingServer) return;
+    if (isQuitting || _isUpdating || isExitingServer || _isRestartingServer) return;
     const reason = signal ? `信号 ${signal}` : `退出码 ${code}`;
     console.error(`[desktop] Server 意外退出 (${reason})`);
 
@@ -3897,6 +3898,33 @@ async function shutdownServer() {
     try { fs.unlinkSync(path.join(hanakoHome, "server-info.json")); } catch {}
   } else {
     console.warn("[desktop] shutdownServer: 保留 server-info.json，供下次启动识别残留 server");
+  }
+}
+
+async function restartServer() {
+  console.log("[desktop] restartServer: 手动重启 Server...");
+  _isRestartingServer = true;
+  try {
+    // 关闭旧 server（monitor 看到 _isRestartingServer 会直接跳过，不弹窗）
+    await shutdownServer();
+    _serverRestartAttempts = 0;
+    await startServer();
+    console.log("[desktop] restartServer: Server 重启成功");
+    monitorServer();
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("server-restarted", { port: serverPort });
+    }
+    if (settingsWindow && !settingsWindow.isDestroyed()) {
+      settingsWindow.webContents.send("server-restarted", { port: serverPort });
+    }
+  } catch (err) {
+    console.error("[desktop] restartServer: Server 重启失败:", err.message);
+    dialog.showErrorBox("Hanako Server", mt("dialog.serverRestartFailed", {
+      version: app?.getVersion?.() || "unknown",
+      error: err.message,
+    }));
+  } finally {
+    _isRestartingServer = false;
   }
 }
 

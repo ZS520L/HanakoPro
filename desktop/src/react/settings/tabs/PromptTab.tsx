@@ -42,6 +42,7 @@ type ToolParameterOverride = {
 type ToolOverride = {
   name: string;
   description?: string;
+  enabled?: boolean;
   parameters: ToolParameterOverride[];
 };
 
@@ -75,6 +76,7 @@ type ToolSource = {
   name: string;
   label: string;
   description: string;
+  enabled?: boolean;
   parameters: Array<{ path: string; description: string }>;
 };
 
@@ -106,6 +108,9 @@ const PROMPT_VARIABLES = [
   '{{skills}}',
   '{{appendSystemPrompt}}',
   '{{mood}}',
+  '{{hanakoHome}}',
+  '{{mcpPluginDataDir}}',
+  '{{mcpConfigPath}}',
 ];
 const PROMPT_VARIABLE_COPY_TEXT = PROMPT_VARIABLES.join('\n');
 const PROMPT_VARIABLE_HINT = `支持变量：${PROMPT_VARIABLES.join('、')}。`;
@@ -318,12 +323,13 @@ export function PromptTab() {
     setPreviewLoading(true);
     setPreviewError(null);
     try {
+      const { homeFolder } = useSettingsStore.getState();
       const res = await hanaFetch(`/api/agents/${agentId}/system-prompt-preview`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           promptComposer: draft,
-          cwd: typeof settingsConfig?.last_cwd === 'string' ? settingsConfig.last_cwd : undefined,
+          cwd: typeof homeFolder === 'string' ? homeFolder : (typeof settingsConfig?.last_cwd === 'string' ? settingsConfig.last_cwd : undefined),
           memoryEnabled: settingsConfig?.memory?.enabled !== false,
         }),
         timeout: 60_000,
@@ -366,6 +372,10 @@ export function PromptTab() {
     updateToolOverride(name, { description });
   };
 
+  const updateToolEnabled = (name: string, enabled: boolean) => {
+    updateToolOverride(name, { enabled });
+  };
+
   const updateToolParameter = (name: string, path: string, description: string) => {
     const existing = getToolOverride(name);
     const parameters = existing?.parameters || [];
@@ -379,7 +389,7 @@ export function PromptTab() {
     const existing = getToolOverride(name);
     if (!existing) return;
     const { description: _description, ...rest } = existing;
-    if (rest.parameters.length === 0) {
+    if (rest.parameters.length === 0 && rest.enabled !== false) {
       setAndSaveDraft({ ...draft, toolOverrides: draft.toolOverrides.filter(tool => tool.name !== name) });
       return;
     }
@@ -390,7 +400,7 @@ export function PromptTab() {
     const existing = getToolOverride(name);
     if (!existing) return;
     const parameters = existing.parameters.filter(param => param.path !== path);
-    if (!hasOwn(existing, 'description') && parameters.length === 0) {
+    if (!hasOwn(existing, 'description') && parameters.length === 0 && existing.enabled !== false) {
       setAndSaveDraft({ ...draft, toolOverrides: draft.toolOverrides.filter(tool => tool.name !== name) });
       return;
     }
@@ -481,14 +491,18 @@ export function PromptTab() {
           {source.tools.map(tool => {
             const override = getToolOverride(tool.name);
             const toolDescription = override && hasOwn(override, 'description') ? (override.description || '') : tool.description;
+            const toolEnabled = tool.enabled !== false && (!override || override.enabled !== false);
             return (
-              <details className={styles['prompt-editor-card']} key={tool.name}>
+              <details className={`${styles['prompt-editor-card']}${!toolEnabled ? ` ${styles['prompt-tool-disabled']}` : ''}`} key={tool.name} data-tool-enabled={toolEnabled ? '' : 'false'}>
                 <summary className={styles['prompt-editor-header']}>
                   <strong>{tool.name}</strong>
-                  <button type="button" className={`${styles['settings-save-btn-sm']} ${styles['prompt-header-action']}`} onClick={(event) => {
-                    event.preventDefault();
-                    resetToolDescription(tool.name);
-                  }} disabled={!override || !hasOwn(override, 'description')}>恢复工具描述</button>
+                  <div className={styles['prompt-tool-actions']}>
+                    <Toggle on={toolEnabled} onChange={(v) => updateToolEnabled(tool.name, v)} />
+                    <button type="button" className={`${styles['settings-save-btn-sm']} ${styles['prompt-header-action']}`} onClick={(event) => {
+                      event.preventDefault();
+                      resetToolDescription(tool.name);
+                    }} disabled={!override || !hasOwn(override, 'description')}>恢复工具描述</button>
+                  </div>
                 </summary>
                 <textarea
                   className={`${styles['settings-textarea']} ${styles['prompt-route-textarea']}`}

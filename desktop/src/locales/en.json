@@ -81,7 +81,11 @@
     "bridge": "Social Platforms",
     "toggle": "Sidebar",
     "bridgeShort": "Bridge",
-    "pinned": "Pinned"
+    "pinned": "Pinned",
+    "noProject": "No Project",
+    "projects": "Projects",
+    "byTime": "By Time",
+    "byProject": "By Project"
   },
   "session": {
     "untitled": "New Chat",
@@ -101,6 +105,22 @@
       "loading": "Loading summary…",
       "empty": "No summary yet",
       "loadFailed": "Failed to load summary"
+    },
+    "details": {
+      "title": "Session Details",
+      "open": "Session Details",
+      "loading": "Loading…",
+      "model": "Model",
+      "thinking": "Thinking Level",
+      "permission": "Permission",
+      "memory": "Memory",
+      "systemPrompt": "System Prompt",
+      "tools": "Tools ({n})"
+    },
+    "search": {
+      "placeholder": "Search sessions…",
+      "clear": "Clear search",
+      "noResults": "No matching sessions"
     },
     "archived": {
       "entry": "Archived Chats",
@@ -644,7 +664,10 @@
       "recentTurnsHint": "Number of recent turns to always keep verbatim",
       "compressionModel": "Compression Model",
       "compressionModelHint": "Model used for generating compression summaries",
-      "modelUtility": "Utility Model",
+      "modelCustom": "Custom Model",
+      "customModel": "Custom Model",
+      "customModelHint": "Choose a dedicated model for context compression",
+      "customModelPlaceholder": "Select compression model",
       "modelChat": "Chat Model",
       "modeTitle": "Compression Mode",
       "modes": {
@@ -929,6 +952,7 @@
       "verify": "Verify",
       "verifyConnection": "Verify Connection",
       "verifySuccess": "Connection verified",
+      "verifyAndSaved": "Connection verified & saved",
       "verifyFailed": "Verification failed",
       "setupHint": "Enter API Key to activate this provider",
       "configInvalid": "This provider config is damaged and has been skipped temporarily. Save the config again, or delete and recreate it.",
@@ -1050,6 +1074,13 @@
       "sectionTitle": "Memory",
       "title": "Memory System",
       "needsUtilityModel": "Configure a Utility model in Models tab first",
+      "guideEyebrow": "Memory playbook",
+      "guideTitle": "Shape your personal assistant with memory",
+      "guideSystemPrompt": "Memories are injected into the system prompt. When the Agent behaves unexpectedly, adding memory can correct it more efficiently than rewriting the full system prompt.",
+      "guideMasterPlayer": "Memory helps your assistant understand you better. Once you realize how important memory is and learn how to maintain it, you are playing at a master level. Keep going!",
+      "guideVideoLabel": "Tutorial video",
+      "guideVideoTitle": "HanakoPro: An Agent IDE tool with an extremely high ceiling!",
+      "guideVideoAction": "Packed with tips. Watch now",
       "compiled": "Current Memory",
       "compiledHint": "What the assistant remembers about you — important and recent things",
       "compiledView": "View Current Memory",
@@ -1088,7 +1119,15 @@
         "importing": "Importing...",
         "empty": "No memories yet",
         "invalidFile": "Invalid memory file",
-        "activeOnly": "Set this agent as active first"
+        "activeOnly": "Set this agent as active first",
+        "edit": "Edit",
+        "save": "Save",
+        "saving": "Saving...",
+        "editSuccess": "Memory updated",
+        "factRequired": "Memory content cannot be empty",
+        "factPlaceholder": "Memory content",
+        "tagsPlaceholder": "Tags, separated by commas",
+        "timePlaceholder": "Time, optional"
       },
       "unknownDate": "Unknown date",
       "threshold": {
@@ -1916,13 +1955,13 @@
     "compatFactsCorrupted": "facts.db corrupted and backed up, will rebuild empty database",
     "defaultChannelName": "Crew",
     "defaultChannelDesc": "Work coordination channel for daily tasks.",
-    "memorySearchLabel": "Search Memory",
-    "memorySearchDesc": "Search the memory bank. Use when you are unsure about something, think you discussed it before but cannot recall details, or need more context. Input natural language queries and optional tag filters. Results include matching meta-facts and timestamps.",
-    "memorySearchQueryDesc": "Search query in natural language",
+    "memorySearchLabel": "Search Pinned Memory",
+    "memorySearchDesc": "Search pinned memories. Pinned memories are active long-term preferences and key facts that are directly injected into the system prompt. Use this when you need to confirm, modify, or remove a pinned memory.",
+    "memorySearchQueryDesc": "Search query in natural language describing the pinned memory to find",
     "memorySearchTagsDesc": "Tag filter, 2-5 keyword tags for precise matching, e.g. [\"chocolate\", \"food preference\"]",
     "memorySearchDateFromDesc": "Start date, format YYYY-MM-DD",
     "memorySearchDateToDesc": "End date, format YYYY-MM-DD",
-    "memorySearchEmpty": "No relevant content found in memory.",
+    "memorySearchEmpty": "No relevant content found in pinned memory.",
     "memorySearchError": "Memory search error: {msg}",
     "fallbackUserName": "User",
     "uploadFailed": "Failed to import files",
@@ -1935,6 +1974,7 @@
   "main": {
     "tray": {
       "show": "Show Hanako",
+      "restart": "Restart Server",
       "settings": "Settings",
       "quit": "Quit"
     },

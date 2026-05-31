@@ -10,6 +10,11 @@
 .message {
   font-size: 13px;
   color: var(--text-secondary, #888);
+  margin-bottom: 4px;
+}
+.retryHint {
+  font-size: 11px;
+  color: var(--text-tertiary, #aaa);
   margin-bottom: 8px;
 }
 .retry {

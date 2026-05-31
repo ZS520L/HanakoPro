@@ -1,9 +1,10 @@
 /**
  * Session 管理 REST 路由
  */
-import { appendFileSync } from "fs";
+import { appendFileSync, existsSync } from "fs";
 import fs from "fs/promises";
 import path from "path";
+const fsp = fs;
 import { Hono } from "hono";
 import { safeJson } from "../hono-helpers.js";
 import { t } from "../i18n.js";
@@ -250,6 +251,193 @@ export function createSessionsRoute(engine) {
   });
 
   // 获取单个 session 的滚动摘要。列表只暴露 hasSummary，正文按需读取。
+  route.get("/sessions/details", async (c) => {
+    try {
+      const sessionPath = c.req.query("path") || null;
+      if (!sessionPath) {
+        return c.json({ error: t("error.missingParam", { param: "path" }) }, 400);
+      }
+      if (!isValidSessionPath(sessionPath, engine.agentsDir)) {
+        return c.json({ error: "Invalid session path" }, 403);
+      }
+      const details = await engine.getSessionDetails(sessionPath);
+      if (!details) {
+        return c.json({ error: "Session details not available" }, 404);
+      }
+      return c.json(details);
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
+  // 全文搜索会话内容
+  route.get("/sessions/search", async (c) => {
+    try {
+      const q = (c.req.query("q") || "").trim().toLowerCase();
+      if (!q || q.length < 1) {
+        return c.json({ results: [] });
+      }
+      const sessions = await engine.listSessions();
+      const results = [];
+      const MAX_RESULTS = 50;  // 增加到 50，允许更多结果
+      const MAX_FILES = 1000;  // 搜索所有会话，不限制数量
+
+      for (const s of sessions.slice(0, MAX_FILES)) {
+        if (results.length >= MAX_RESULTS) break;
+        // 标题 / 首条消息匹配优先
+        const titleLower = (s.title || "").toLowerCase();
+        const firstLower = (s.firstMessage || "").toLowerCase();
+        if (titleLower.includes(q) || firstLower.includes(q)) {
+          results.push({
+            path: s.path,
+            title: s.title || null,
+            firstMessage: (s.firstMessage || "").slice(0, 100),
+            modified: s.modified?.toISOString?.() || null,
+            messageCount: s.messageCount || 0,
+            agentId: s.agentId || null,
+            agentName: s.agentName || null,
+            pinnedAt: s.pinnedAt || null,
+            matchType: "title",
+            snippet: null,
+          });
+          continue;
+        }
+        
+        // 如果标题/首条消息已匹配，跳过全文搜索
+        if (results.some(r => r.path === s.path)) continue;
+        // 全文搜索 JSONL - 对每个会话执行类似 Ctrl+F 的搜索
+        try {
+          const sessionFile = s.agentId
+            ? path.join(engine.agentsDir, s.agentId, "sessions", path.basename(s.path))
+            : s.path;
+          if (!existsSync(sessionFile)) continue;
+          const content = await fsp.readFile(sessionFile, "utf-8");
+          const lines = content.split('\n').filter(line => line.trim());
+          
+          let foundSnippet = null;
+          let messageCount = 0;
+          let matchedCount = 0;
+          
+          // 遍历所有消息记录，搜索任何包含关键词的内容
+          for (const line of lines) {
+            try {
+              const record = JSON.parse(line);
+              
+              // 跳过非消息记录
+              if (record.type !== "message" || !record.message) continue;
+              messageCount++;
+              
+              const msg = record.message;
+              let matchedText = null;
+              
+              // 策略 1：搜索 text 字段（用户消息和简单助手消息）
+              if (typeof msg.text === 'string' && msg.text) {
+                const textLower = msg.text.toLowerCase();
+                if (textLower.includes(q)) {
+                  matchedText = msg.text;
+                }
+              }
+              
+              // 策略 2：搜索 blocks 中的文本（Markdown 渲染的消息）
+              if (!matchedText && msg.blocks && Array.isArray(msg.blocks)) {
+                for (const block of msg.blocks) {
+                  if (block.type === 'text' && block.text) {
+                    const textLower = block.text.toLowerCase();
+                    if (textLower.includes(q)) {
+                      matchedText = block.text;
+                      break;
+                    }
+                  }
+                  // 搜索 thinking 块内容
+                  if (block.type === 'thinking' && block.content) {
+                    const contentLower = block.content.toLowerCase();
+                    if (contentLower.includes(q)) {
+                      matchedText = block.content;
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              // 策略 3：搜索 blocks 中的其他类型的文本内容
+              if (!matchedText && msg.blocks && Array.isArray(msg.blocks)) {
+                for (const block of msg.blocks) {
+                  // 搜索代码块、引用等
+                  if (block.code && block.code.toLowerCase().includes(q)) {
+                    matchedText = block.code;
+                    break;
+                  }
+                  if (block.quote && block.quote.toLowerCase().includes(q)) {
+                    matchedText = block.quote;
+                    break;
+                  }
+                  // 搜索嵌套的文本
+                  if (block.children && Array.isArray(block.children)) {
+                    for (const child of block.children) {
+                      if (typeof child.text === 'string' && child.text.toLowerCase().includes(q)) {
+                        matchedText = child.text;
+                        break;
+                      }
+                    }
+                  }
+                }
+              }
+              
+              // 策略 4：搜索其他可能的文本字段
+              if (!matchedText && msg.content && typeof msg.content === 'string') {
+                // 搜索 content 字段（某些消息格式）
+                if (msg.content.toLowerCase().includes(q)) {
+                  matchedText = msg.content;
+                }
+              }
+              
+              // 如果找到匹配，提取片段
+              if (matchedText) {
+                matchedCount++;
+                if (!foundSnippet) {
+                  const textLower = matchedText.toLowerCase();
+                  const idx = textLower.indexOf(q);
+                  const start = Math.max(0, idx - 40);
+                  const end = Math.min(matchedText.length, idx + q.length + 60);
+                  let snippet = matchedText.slice(start, end).replace(/\n/g, " ").trim();
+                  if (start > 0) snippet = "…" + snippet;
+                  if (end < matchedText.length) snippet = snippet + "…";
+                  if (snippet.length > 180) snippet = snippet.slice(0, 180) + "…";
+                  foundSnippet = snippet;
+                }
+                // 继续遍历所有消息，不要 break
+              }
+            } catch (err) {
+              // 跳过解析失败的行
+            }
+          }
+          
+          if (foundSnippet) {
+            // 调试：输出搜索统计和 snippet 内容
+            console.log(`[Session Search] Query: "${q}" | Path: ${s.path} | Matches: ${matchedCount}/${messageCount} | Snippet: "${foundSnippet}"`);
+            results.push({
+              path: s.path,
+              title: s.title || null,
+              firstMessage: (s.firstMessage || "").slice(0, 100),
+              modified: s.modified?.toISOString?.() || null,
+              messageCount: s.messageCount || 0,
+              agentId: s.agentId || null,
+              agentName: s.agentName || null,
+              pinnedAt: s.pinnedAt || null,
+              matchType: "content",
+              snippet: foundSnippet,
+            });
+          }
+        } catch {
+          // 跳过读取失败的文件
+        }
+      }
+      return c.json({ results, query: q, total: results.length });
+    } catch (err) {
+      return c.json({ error: err.message }, 500);
+    }
+  });
+
   route.get("/sessions/summary", async (c) => {
     try {
       const sessionPath = c.req.query("path") || null;

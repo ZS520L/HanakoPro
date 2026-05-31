@@ -26,7 +26,7 @@ export class McpStdioClient {
       cwd: this.server.cwd || undefined,
       env: { ...process.env, ...registryEnv(this.server), ...(this.server.env || {}) },
       stdio: ["pipe", "pipe", "pipe"],
-      shell: false,
+      shell: process.platform === "win32",
     });
 
     this.process.stdout.setEncoding("utf-8");

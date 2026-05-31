@@ -30,6 +30,13 @@ function makeAgent(tmpDir) {
       ]),
       clearAll: vi.fn(),
       delete: vi.fn((id) => id === 1),
+      update: vi.fn((id, patch) => id === 1 ? {
+        id,
+        fact: patch.fact,
+        tags: patch.tags,
+        time: patch.time,
+        created_at: "2026-05-23T10:00:00.000Z",
+      } : null),
     },
   };
 }
@@ -152,6 +159,32 @@ describe("memory routes", () => {
 
     expect(res.status).toBe(200);
     expect(agent.factStore.delete).toHaveBeenCalledWith(1);
+    expect(engine.updateConfig).toHaveBeenCalledWith({}, { agentId: "hana" });
+  });
+
+  it("updates one automatic fact memory", async () => {
+    const agent = makeAgent(tmpDir);
+    const engine = makeEngine(agent, tmpDir);
+    const app = mountConfigRoute(engine);
+
+    const res = await app.request("/api/memories/1?agentId=hana", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        fact: "用户喜欢自己手动编辑记忆",
+        tags: ["memory", "manual"],
+        time: "2026-05-25T22:00:00.000Z",
+      }),
+    });
+    const data = await res.json();
+
+    expect(res.status).toBe(200);
+    expect(agent.factStore.update).toHaveBeenCalledWith(1, {
+      fact: "用户喜欢自己手动编辑记忆",
+      tags: ["memory", "manual"],
+      time: "2026-05-25T22:00:00.000Z",
+    });
+    expect(data.memory.fact).toBe("用户喜欢自己手动编辑记忆");
     expect(engine.updateConfig).toHaveBeenCalledWith({}, { agentId: "hana" });
   });
 

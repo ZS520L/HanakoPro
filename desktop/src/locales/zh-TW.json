@@ -80,7 +80,11 @@
     "bridge": "接入社群平台",
     "toggle": "側邊欄",
     "bridgeShort": "接入",
-    "pinned": "置頂"
+    "pinned": "置頂",
+    "noProject": "未分類",
+    "projects": "專案",
+    "byTime": "依時間",
+    "byProject": "依專案"
   },
   "session": {
     "untitled": "新對話",
@@ -475,12 +479,12 @@
     "edit": {
       "running": "✏️ {name} 提筆改字中",
       "done": "✏️ {name} 改好了",
-      "failed": "✏️ {name} 越改越亂了"
+      "failed": "✏️ {name} 編輯失敗"
     },
     "edit-diff": {
       "running": "✏️ {name} 提筆改字中",
       "done": "✏️ {name} 改好了",
-      "failed": "✏️ {name} 越改越亂了"
+      "failed": "✏️ {name} 編輯失敗"
     },
     "glob": {
       "running": "🔍 {name} 正在找檔案",
@@ -640,7 +644,10 @@
       "recentTurnsHint": "最近多少輪訊息始終保留原文，不被壓縮",
       "compressionModel": "壓縮用模型",
       "compressionModelHint": "選擇執行壓縮摘要的模型",
-      "modelUtility": "輔助模型",
+      "modelCustom": "自選模型",
+      "customModel": "自選模型",
+      "customModelHint": "選擇一個專門用於執行上下文壓縮的模型",
+      "customModelPlaceholder": "選擇壓縮模型",
       "modelChat": "對話模型",
       "modeTitle": "壓縮模式",
       "modes": {
@@ -925,6 +932,7 @@
       "verify": "驗證",
       "verifyConnection": "驗證連線",
       "verifySuccess": "驗證通過",
+      "verifyAndSaved": "驗證通過，已儲存",
       "verifyFailed": "驗證失敗",
       "setupHint": "輸入 API Key 以啟用此供應商",
       "configInvalid": "此供應商設定損壞，已被暫時略過。請重新儲存設定，或刪除後重建。",
@@ -1025,6 +1033,13 @@
       "sectionTitle": "記憶",
       "title": "記憶開關",
       "needsUtilityModel": "需要先在「模型」中設定 Utility 模型",
+      "guideEyebrow": "記憶玩法",
+      "guideTitle": "用記憶調教你的專屬助手",
+      "guideSystemPrompt": "記憶會注入系統提示詞中，當 Agent 行動不符合預期時，可以增加記憶進行矯正，比修改完整系統提示詞更高效。",
+      "guideMasterPlayer": "記憶讓你的助手更懂你，當你意識到記憶的重要性，並懂得如何維護記憶，你就是大神玩家了，加油！",
+      "guideVideoLabel": "教學影片",
+      "guideVideoTitle": "HanakoPro：上限最高的 Agent IDE 工具！",
+      "guideVideoAction": "乾貨滿滿，立即觀看",
       "compiled": "當下記憶",
       "compiledHint": "助手記住的關於你的，重要的與近期的事",
       "compiledView": "查看當下記憶",
@@ -1063,7 +1078,15 @@
         "importing": "正在匯入...",
         "empty": "還沒有記憶",
         "invalidFile": "無效的記憶檔案",
-        "activeOnly": "請先將此助手設為主助手"
+        "activeOnly": "請先將此助手設為主助手",
+        "edit": "編輯",
+        "save": "儲存",
+        "saving": "儲存中...",
+        "editSuccess": "記憶已更新",
+        "factRequired": "記憶內容不能為空",
+        "factPlaceholder": "記憶內容",
+        "tagsPlaceholder": "標籤，用逗號分隔",
+        "timePlaceholder": "時間，可留空"
       },
       "unknownDate": "未知日期",
       "threshold": {
@@ -1876,13 +1899,13 @@
     "compatFactsCorrupted": "facts.db 損壞已備份，將重建空資料庫",
     "defaultChannelName": "工作群",
     "defaultChannelDesc": "工作協調頻道，所有成員在這裡溝通日常事務。",
-    "memorySearchLabel": "搜尋記憶",
-    "memorySearchDesc": "搜尋記憶庫。當你對某件事拿不準、覺得之前聊過但想不起細節、或者需要更多上下文時使用。輸入自然語言查詢和可選的標籤過濾。結果包含匹配的元事實和對應時間。",
-    "memorySearchQueryDesc": "搜尋查詢，用自然語言描述你想找的內容",
+    "memorySearchLabel": "搜尋置頂記憶",
+    "memorySearchDesc": "搜尋置頂記憶。置頂記憶是目前仍然啟用的長期偏好與關鍵事實，已直接注入系統提示詞；當你需要確認、修改或移除某條置頂記憶時使用。",
+    "memorySearchQueryDesc": "搜尋查詢，用自然語言描述你想找的置頂記憶",
     "memorySearchTagsDesc": "標籤過濾，輸入 2~5 個關鍵字標籤來精確匹配。例如 [\"巧克力\", \"食物偏好\"]",
     "memorySearchDateFromDesc": "起始日期，格式 YYYY-MM-DD",
     "memorySearchDateToDesc": "結束日期，格式 YYYY-MM-DD",
-    "memorySearchEmpty": "記憶庫裡沒有找到相關內容。",
+    "memorySearchEmpty": "置頂記憶裡沒有找到相關內容。",
     "memorySearchError": "記憶搜尋出錯: {msg}",
     "fallbackUserName": "使用者",
     "uploadFailed": "檔案匯入失敗",
@@ -1895,6 +1918,7 @@
   "main": {
     "tray": {
       "show": "顯示 Hanako",
+      "restart": "重啟服務",
       "settings": "設定",
       "quit": "結束"
     },

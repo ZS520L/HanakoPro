@@ -22,7 +22,7 @@ const log = createModuleLogger("context-compressor");
 export function resolveContextConfig(agentConfig) {
   const raw = agentConfig?.context;
   if (!raw || typeof raw !== "object") return { ...DEFAULT_CONTEXT_COMPRESSION };
-  return {
+  const merged = {
     ...DEFAULT_CONTEXT_COMPRESSION,
     ...raw,
     protect: {
@@ -30,6 +30,11 @@ export function resolveContextConfig(agentConfig) {
       ...(raw.protect || {}),
     },
   };
+  if (merged.compressionModel === "utility") merged.compressionModel = "custom";
+  if (!merged.compressionCustomModel?.id || !merged.compressionCustomModel?.provider) {
+    merged.compressionCustomModel = null;
+  }
+  return merged;
 }
 
 /**

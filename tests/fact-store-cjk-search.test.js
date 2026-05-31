@@ -119,6 +119,30 @@ describe("FactStore CJK full-text search", () => {
     expect(store.searchFullText("茉莉", 10)).toEqual([]);
   });
 
+  it("keeps the CJK full-text index consistent when facts are updated", () => {
+    const { id } = store.add({
+      fact: "用户喜欢在晚上喝茉莉花茶",
+      tags: ["饮品", "习惯"],
+      time: "2026-05-05T18:00",
+    });
+
+    const updated = store.update(id, {
+      fact: "用户喜欢自己手动编辑记忆",
+      tags: ["记忆", "手动"],
+      time: "2026-05-25T22:00",
+    });
+
+    expect(updated.fact).toBe("用户喜欢自己手动编辑记忆");
+    expect(updated.tags).toEqual(["记忆", "手动"]);
+    expect(store.searchFullText("茉莉", 10)).toEqual([]);
+    expect(store.searchFullText("手动编辑", 10).map((r) => r.fact)).toEqual([
+      "用户喜欢自己手动编辑记忆",
+    ]);
+    expect(store.searchFullText("记忆", 10).map((r) => r.fact)).toEqual([
+      "用户喜欢自己手动编辑记忆",
+    ]);
+  });
+
   it("migrates existing v1 databases into the CJK-aware search index", () => {
     store.close();
     store = null;

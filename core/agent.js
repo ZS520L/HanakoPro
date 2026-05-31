@@ -337,7 +337,7 @@ export class Agent {
 
     // 7. 创建工具（记忆 + 通用）
     log(`  [agent] 7. 创建工具...`);
-    this._memorySearchTool = createMemorySearchTool(this._factStore);
+    this._memorySearchTool = createMemorySearchTool(this.agentDir);
     this._webSearchTool = createWebSearchTool({
       configPath: this.configPath,
       searchConfigResolver: this._searchConfigResolver,
@@ -801,7 +801,13 @@ export class Agent {
     const fill = (text) => text
       .replace(/\{\{userName\}\}/g, this.userName)
       .replace(/\{\{agentName\}\}/g, this.agentName)
-      .replace(/\{\{agentId\}\}/g, this.id);
+      .replace(/\{\{agentId\}\}/g, this.id)
+      .replace(/\{\{project_overview\}\}/g, () => {
+        try {
+          const cwd = this._config?.desk?.home_folder || this._cb?.getCwd?.() || "";
+          return this._cb?.getEngine?.()?.getProjectOverview?.(cwd) || "";
+        } catch { return ""; }
+      });
     const readFile = (p) => safeReadFile(p, "");
     const langDir = isZh ? "" : "en/";
     const yuanType = this._config?.agent?.yuan || "hanako";
@@ -823,7 +829,13 @@ export class Agent {
     const fill = (text) => text
       .replace(/\{\{userName\}\}/g, this.userName)
       .replace(/\{\{agentName\}\}/g, this.agentName)
-      .replace(/\{\{agentId\}\}/g, this.id);
+      .replace(/\{\{agentId\}\}/g, this.id)
+      .replace(/\{\{project_overview\}\}/g, () => {
+        try {
+          const cwd = this._config?.desk?.home_folder || this._cb?.getCwd?.() || "";
+          return this._cb?.getEngine?.()?.getProjectOverview?.(cwd) || "";
+        } catch { return ""; }
+      });
     const readFile = (p) => safeReadFile(p, "");
     const langDir = isZh ? "" : "en/";
     const yuanType = this._config?.agent?.yuan || "hanako";
@@ -853,7 +865,13 @@ export class Agent {
     const fill = (text) => text
       .replace(/\{\{userName\}\}/g, this.userName)
       .replace(/\{\{agentName\}\}/g, this.agentName)
-      .replace(/\{\{agentId\}\}/g, this.id);
+      .replace(/\{\{agentId\}\}/g, this.id)
+      .replace(/\{\{project_overview\}\}/g, () => {
+        try {
+          const cwd = this._config?.desk?.home_folder || this._cb?.getCwd?.() || "";
+          return this._cb?.getEngine?.()?.getProjectOverview?.(cwd) || "";
+        } catch { return ""; }
+      });
     const yuanType = this._config?.agent?.yuan || "hanako";
     const isZh = String(this._config.locale || "").startsWith("zh");
     const langDir = isZh ? "" : "en/";
@@ -908,7 +926,9 @@ export class Agent {
     // 可选文件
     const userMd = readFile(path.join(this.userDir, "user.md"));
     const pinnedMd = readFile(path.join(this.agentDir, "pinned.md"));
-    const cwdPath = cwdOverride !== null ? cwdOverride : (this._cb?.getCwd?.() || "");
+    const cwdPath = cwdOverride !== null
+      ? cwdOverride
+      : (this._config?.desk?.home_folder || this._cb?.getCwd?.() || "");
     const tz = this._cb?.getTimezone?.() || Intl.DateTimeFormat().resolvedOptions().timeZone;
     const now = new Date();
     const fmtOpts = {
@@ -1106,6 +1126,24 @@ export class Agent {
         "When the user asks to change preferences (including but not limited to: appearance/theme, language/region, model selection, security/permissions, memory, personal info, working directory), use the update_settings tool. Do not search the web or edit config files. When intent is clear, apply directly; when unsure, search first."
     );
 
+    // MCP 配置引导（内置变量：{{hanakoHome}} {{mcpPluginDataDir}} {{mcpConfigPath}}）
+    addPromptBlock("mcp-config", isZh ? "MCP 配置" : "MCP Configuration", isZh
+      ? "\n## MCP 配置\n\n" +
+        "你可以配置 MCP (Model Context Protocol) 服务器来扩展能力。配置文件位于 `{{mcpConfigPath}}`。\n\n" +
+        "格式：`{\"schemaVersion\":1,\"global\":{\"mcp\":{\"enabled\":true,\"connectors\":[...]}}}`。\n\n" +
+        "每个 connector 结构：`{\"id\":\"...\",\"name\":\"...\",\"transport\":\"stdio\"|\"sse\"|\"streamable-http\",\"command\":\"...\",\"args\":[...],\"cwd\":\"...\",\"env\":{...},\"headers\":{...},\"autoStart\":true,\"timeout\":30000}`。\n\n" +
+        "**添加 stdio 连接器**：在 `global.mcp.connectors` 数组追加对象。\n" +
+        "**HTTP 连接器**：`transport` 用 `\"sse\"` 或 `\"streamable-http\"`，加 `url` 字段。\n\n" +
+        "用户要求配置 MCP 服务器时，先读现配置，再编辑 `connectors` 数组。"
+      : "\n## MCP Configuration\n\n" +
+        "You can configure MCP (Model Context Protocol) servers to extend capabilities. Config file: `{{mcpConfigPath}}`.\n\n" +
+        "Format: `{\"schemaVersion\":1,\"global\":{\"mcp\":{\"enabled\":true,\"connectors\":[...]}}}`.\n\n" +
+        "Each connector: `{\"id\":\"...\",\"name\":\"...\",\"transport\":\"stdio\"|\"sse\"|\"streamable-http\",\"command\":\"...\",\"args\":[...],\"cwd\":\"...\",\"env\":{...},\"headers\":{...},\"autoStart\":true,\"timeout\":30000}`.\n\n" +
+        "**Adding a stdio connector**: Append an object to the `global.mcp.connectors` array.\n" +
+        "**HTTP connectors**: Use `transport: \"sse\"` or `\"streamable-http\"`, add a `url` field.\n\n" +
+        "When asked to configure an MCP server, read the existing config first, then edit the `connectors` array."
+    );
+
     // 主动技能获取引导（仅在 allow_github_fetch 开启时注入）
     // learn_skills 从全局 preferences 读取
     const learnCfg = this._cb?.getLearnSkills?.() || this._config?.capabilities?.learn_skills || {};
@@ -1214,6 +1252,9 @@ export class Agent {
         skills: skillsPrompt,
         appendSystemPrompt,
         mood: MOOD_PROMPT,
+        hanakoHome: path.dirname(path.dirname(this.agentDir)),
+        mcpPluginDataDir: path.join(path.dirname(path.dirname(this.agentDir)), "plugin-data", "mcp"),
+        mcpConfigPath: path.join(path.dirname(path.dirname(this.agentDir)), "plugin-data", "mcp", "config.json"),
       },
     });
     return composedPrompt || defaultPrompt;

@@ -130,6 +130,15 @@ export async function loadMessages(forPath?: string): Promise<void> {
   try {
     const res = await hanaFetch(`/api/sessions/messages?path=${encodeURIComponent(targetPath)}`);
     const data = await res.json();
+    if (data.error) {
+      console.error('[loadMessages] server error:', data.error, 'path:', targetPath);
+      // 即使服务端报错，也要初始化空的 session，防止 UI 卡在空白状态
+      useStore.getState().initSession(targetPath, [], false);
+      if (targetPath === useStore.getState().currentSessionPath) {
+        useStore.setState({ welcomeVisible: false });
+      }
+      return;
+    }
     const latestVersion =
       useStore.getState()._loadMessagesVersion[targetPath] ?? 0;
     if (latestVersion !== myVersion) {
@@ -214,6 +223,11 @@ export async function loadMoreMessages(forPath?: string): Promise<void> {
       `/api/sessions/messages?path=${encodeURIComponent(targetPath)}&before=${encodeURIComponent(before)}`,
     );
     const data = await res.json();
+    if (data.error) {
+      console.error('[loadMoreMessages] server error:', data.error, 'path:', targetPath);
+      useStore.getState().setLoadingMore(targetPath, false);
+      return;
+    }
     if (Array.isArray(data.sessionFiles)) {
       useStore.getState().setSessionRegistryFiles(targetPath, data.sessionFiles);
     }

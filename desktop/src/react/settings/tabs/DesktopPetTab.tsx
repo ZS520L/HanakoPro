@@ -26,6 +26,7 @@ export function DesktopPetTab() {
   const showToast = useSettingsStore(s => s.showToast);
   const [desktopPetState, setDesktopPetState] = useState<DesktopPetState | null>(null);
   const [desktopPetBusyMood, setDesktopPetBusyMood] = useState<DesktopPetMood | null>(null);
+  const [desktopPetToggleBusy, setDesktopPetToggleBusy] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -42,6 +43,26 @@ export function DesktopPetTab() {
   }, []);
 
   const customDesktopPetImages = desktopPetState?.customImages || {};
+  const desktopPetVisible = !!desktopPetState && desktopPetState.enabled !== false && desktopPetState.visible !== false;
+  const desktopPetToggleDisabled = desktopPetToggleBusy || !desktopPetState || !window.platform?.desktopPetSetState;
+
+  const toggleDesktopPet = async (visible: boolean) => {
+    if (desktopPetToggleDisabled) return;
+    const previous = desktopPetState;
+    setDesktopPetToggleBusy(true);
+    if (previous) setDesktopPetState({ ...previous, enabled: visible, visible });
+    try {
+      const next = await window.platform?.desktopPetSetState?.({ enabled: visible, visible });
+      if (next) setDesktopPetState(next);
+      showToast(visible ? '桌宠已开启' : '桌宠已关闭', 'success');
+    } catch (err: unknown) {
+      if (previous) setDesktopPetState(previous);
+      const msg = err instanceof Error ? err.message : String(err);
+      showToast(t('settings.saveFailed') + ': ' + msg, 'error');
+    } finally {
+      setDesktopPetToggleBusy(false);
+    }
+  };
 
   const selectDesktopPetImage = async (mood: DesktopPetMood) => {
     if (desktopPetBusyMood) return;
@@ -77,6 +98,29 @@ export function DesktopPetTab() {
 
   return (
     <div className={`${styles['settings-tab-content']} ${styles['active']}`} data-tab="desktop-pet">
+      <section className={styles['settings-section']}>
+        <h2 className={styles['settings-section-title']}>桌宠开关</h2>
+        <div className={styles['desktop-pet-control-card']}>
+          <div className={styles['desktop-pet-control-copy']}>
+            <span className={styles['desktop-pet-control-title']}>在桌面显示花子</span>
+            <span className={styles['desktop-pet-control-desc']}>关闭后桌宠窗口会隐藏，不影响主程序、托盘和后台任务。</span>
+          </div>
+          <div className={styles['desktop-pet-control-action']}>
+            <span className={styles['desktop-pet-control-state']} data-on={desktopPetVisible ? 'true' : 'false'}>
+              {desktopPetToggleBusy ? '处理中' : desktopPetVisible ? '已开启' : '已关闭'}
+            </span>
+            <button
+              type="button"
+              className={`hana-toggle${desktopPetVisible ? ' on' : ''}`}
+              role="switch"
+              aria-checked={desktopPetVisible}
+              aria-label={desktopPetVisible ? '关闭桌宠' : '开启桌宠'}
+              disabled={desktopPetToggleDisabled}
+              onClick={() => toggleDesktopPet(!desktopPetVisible)}
+            />
+          </div>
+        </div>
+      </section>
       <section className={styles['settings-section']}>
         <h2 className={styles['settings-section-title']}>桌宠形象</h2>
         <div className={styles['desktop-pet-custom-grid']}>

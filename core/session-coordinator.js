@@ -52,6 +52,18 @@ const log = createModuleLogger("session");
 /** 巡检/定时任务默认工具白名单（"*" = 与 chat 一致，全部放行） */
 export const PATROL_TOOLS_DEFAULT = "*";
 
+function resolveCompressionModel(models, contextConfig, sessionModel) {
+  if (contextConfig.compressionModel === "chat") return sessionModel;
+  if (contextConfig.compressionModel === "custom" && contextConfig.compressionCustomModel) {
+    try {
+      return models.resolveExecutionModel(contextConfig.compressionCustomModel);
+    } catch (err) {
+      log.warn(`[contextCompress] custom compression model unavailable, falling back: ${err.message}`);
+    }
+  }
+  return models.utilityModel || sessionModel;
+}
+
 function getSteerPrefix() {
   const isZh = getLocale().startsWith("zh");
   return isZh ? "（插话，无需 MOOD）\n" : "(Interjection, no MOOD needed)\n";
@@ -286,6 +298,7 @@ export class SessionCoordinator {
     this._runtimePermissionModeDefault = DEFAULT_SESSION_PERMISSION_MODE;
     this._metaWriteQueue = Promise.resolve();
     this._prePromptAbortControllers = new Map();
+    this._syncToolOverridesTimer = null;
   }
 
   static _TITLES_TTL = 60_000; // 60 秒
@@ -335,6 +348,7 @@ export class SessionCoordinator {
     }
     const ownerAgentId = explicitAgentId || agent.id || this._d.getActiveAgentId();
     const effectiveCwd = cwd || this._d.getHomeCwd(agent.id) || process.cwd();
+    this._d.getEngine?.()?.initProjectIndex?.(effectiveCwd)?.catch(() => {});
     const models = this._d.getModels();
     // restore 模式：不指定 model，让 PI SDK 从 JSONL 恢复（session model 单一数据源）
     const effectiveModel = restore ? null : (model || this._pendingModel || models.currentModel);
@@ -850,6 +864,7 @@ export class SessionCoordinator {
     const agent = (agentId ? this._d.getAgentById?.(agentId) : null) || this._d.getAgent();
     if (!agent) throw new Error("buildSystemPromptPreview: target agent unavailable");
     const effectiveCwd = cwd || this._d.getHomeCwd(agent.id) || process.cwd();
+    this._d.getEngine?.()?.initProjectIndex?.(effectiveCwd)?.catch(() => {});
     const models = this._d.getModels();
     const effectiveModel = models.currentModel;
     const requestedThinkingLevel = normalizeSessionThinkingLevel(this._d.getPrefs().getThinkingLevel());
@@ -2014,6 +2029,46 @@ export class SessionCoordinator {
     }
   }
 
+  /** 获取会话详情（工具列表、系统提示词、模型等）供前端展示 */
+  async getSessionDetails(sessionPath) {
+    const agentId = this._d.agentIdFromSessionPath(sessionPath);
+    if (!agentId) return null;
+    const agent = this._d.getAgentById(agentId);
+    if (!agent) return null;
+
+    const metaPath = path.join(agent.sessionDir, "session-meta.json");
+    const meta = await this._readMetaCached(metaPath);
+    const sessKey = path.basename(sessionPath);
+    const entry = meta[sessKey] || {};
+
+    // 模型信息：优先从内存 entry 取，其次从 meta 取
+    const sessionEntry = this._sessions.get(sessionPath);
+    const modelRef = (sessionEntry?.modelId && sessionEntry?.modelProvider)
+      ? { id: sessionEntry.modelId, provider: sessionEntry.modelProvider }
+      : (entry.model?.id && entry.model?.provider ? entry.model : null);
+
+    const models = this._d.getModels();
+    let modelInfo = null;
+    if (modelRef?.id && modelRef?.provider) {
+      const found = findModel(models.availableModels, modelRef.id, modelRef.provider);
+      modelInfo = found ? { id: found.id, provider: found.provider, name: found.name || found.id } : modelRef;
+    }
+
+    return {
+      path: sessionPath,
+      model: modelInfo,
+      thinkingLevel: entry.thinkingLevel || null,
+      permissionMode: entry.permissionMode || entry.accessMode || null,
+      memoryEnabled: entry.memoryEnabled !== false,
+      experienceEnabled: entry.experienceEnabled === true,
+      systemPrompt: typeof entry.promptSnapshot?.finalSystemPrompt === "string"
+        ? entry.promptSnapshot.finalSystemPrompt
+        : null,
+      toolNames: Array.isArray(entry.toolNames) ? entry.toolNames : null,
+      workspaceFolders: Array.isArray(entry.workspaceFolders) ? entry.workspaceFolders : [],
+    };
+  }
+
   _resolvePromptModelFromSessionManager(sessionMgr, models) {
     try {
       const ref = sessionMgr?.buildSessionContext?.()?.model;
@@ -2109,6 +2164,67 @@ export class SessionCoordinator {
       ? path.join(this._d.agentsDir, agentId, "sessions")
       : this._d.getAgent().sessionDir;
     return path.join(sessionDir, "session-meta.json");
+  }
+
+  /**
+   * 保存 promptComposer.toolOverrides 后自动同步到当前 agent 的所有活跃 session。
+   * 带防抖：200ms 内的多次调用合并为一次。
+   */
+  syncToolOverrides(agentId) {
+    if (this._syncToolOverridesTimer) clearTimeout(this._syncToolOverridesTimer);
+    this._syncToolOverridesTimer = setTimeout(() => {
+      this._doSyncToolOverrides(agentId).catch((err) => {
+        log.warn(`syncToolOverrides failed for agent ${agentId}: ${err.message}`);
+      });
+    }, 200);
+  }
+
+  async _doSyncToolOverrides(agentId) {
+    const agent = this._d.getAgentById(agentId);
+    if (!agent) return;
+
+    const toolOverrides = agent.config?.promptComposer?.toolOverrides || [];
+
+    // 收集该 agent 下所有非 streaming 状态的 session
+    const sessionsToSync = [];
+    for (const [sp, entry] of this._sessions) {
+      if (entry.agentId !== agentId) continue;
+      if (entry.session?.isStreaming) continue;
+      sessionsToSync.push({ sp, entry });
+    }
+    if (!sessionsToSync.length) return;
+
+    // 用最新 toolOverrides 重建工具列表
+    const cwd = this._d.getHomeCwd?.(agentId) || process.cwd();
+    const forceMem = agent.memoryMasterEnabled !== false;
+    const agentTools = typeof agent.getToolsSnapshot === "function"
+      ? agent.getToolsSnapshot({ forceMemoryEnabled: forceMem })
+      : agent.tools;
+
+    const { tools, customTools } = this._d.buildTools(cwd, agentTools, {
+      agentDir: agent.agentDir,
+      workspace: cwd,
+    });
+
+    const allToolNames = [
+      ...(tools || []).map((t) => t?.name),
+      ...(customTools || []).map((t) => t?.name),
+    ].filter(Boolean);
+
+    log.log(`syncToolOverrides: agent=${agentId} sessions=${sessionsToSync.length} toolNames=[${allToolNames.join(",")}]`);
+
+    // 应用到每个 session 并持久化
+    for (const { sp, entry } of sessionsToSync) {
+      try {
+        entry.session.setActiveToolsByName(allToolNames);
+        entry.toolNames = allToolNames;
+        if (sp) {
+          this.writeSessionMeta(sp, { toolNames: allToolNames });
+        }
+      } catch (err) {
+        log.warn(`syncToolOverrides: setActiveToolsByName failed for ${sp}: ${err.message}`);
+      }
+    }
   }
 
   // ── Session Context ──
@@ -2434,9 +2550,7 @@ export class SessionCoordinator {
 
     // 选择压缩用模型
     const models = this._d.getModels();
-    const compressModel = contextConfig.compressionModel === "chat"
-      ? sourceSession.model
-      : (models.utilityModel || sourceSession.model);
+    const compressModel = resolveCompressionModel(models, contextConfig, sourceSession.model);
 
     const auth = await models.modelRegistry.getApiKeyAndHeaders(compressModel);
     if (!auth.ok || !auth.apiKey) return { ok: false, error: "auth failed for compression model" };
@@ -2563,9 +2677,7 @@ export class SessionCoordinator {
 
     // 选择压缩用模型
     const models = this._d.getModels();
-    const compressModel = contextConfig.compressionModel === "chat"
-      ? session.model
-      : (models.utilityModel || session.model);
+    const compressModel = resolveCompressionModel(models, contextConfig, session.model);
 
     // 获取 API key
     const auth = await models.modelRegistry.getApiKeyAndHeaders(compressModel);

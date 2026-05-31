@@ -94,3 +94,4 @@ reviews/
 
 # Codex environments
 .codex/
+.code-graph/

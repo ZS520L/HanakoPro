@@ -533,12 +533,20 @@ export function createAgentsRoute(engine) {
         workspace: cwd,
         skipToolDescriptionOverrides: true,
       });
+      const toolOverrides = (agent.config?.promptComposer?.toolOverrides || []);
+      const disabledSet = new Set(
+        toolOverrides.filter((o) => o && typeof o === "object" && o.enabled === false).map((o) => o.name),
+      );
+      const tools = summarizeToolDescriptions([
+        ...(builtTools.tools || []),
+        ...(builtTools.customTools || []),
+      ]).map((tool) => ({
+        ...tool,
+        enabled: !disabledSet.has(tool.name),
+      }));
       return c.json({
         promptBlocks: prompt.blocks || [],
-        tools: summarizeToolDescriptions([
-          ...(builtTools.tools || []),
-          ...(builtTools.customTools || []),
-        ]),
+        tools,
       });
     } catch (err) {
       return c.json({ error: err.message }, 500);

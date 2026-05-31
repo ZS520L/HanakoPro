@@ -14,6 +14,7 @@ const EMPTY_ITEMS: ChatListItem[] = [];
 import type { ChatListItem } from '../../stores/chat-types';
 import { ChatTranscript } from './ChatTranscript';
 import { ChatTimelineNavigator } from './ChatTimelineNavigator';
+import { ChatSearchBar } from './ChatSearchBar';
 import { buildTimelineAnchors } from './timeline-anchors';
 import styles from './Chat.module.css';
 
@@ -40,8 +41,9 @@ function PanelHost() {
   const [alive, setAlive] = useState<string[]>([]);
 
   // 加入 alive 列表（不重排已有位置，避免 React 移动 DOM 节点导致 scrollTop 丢失）
+  // 只要 welcome 已隐藏且有 currentPath，就加入 alive——即使 items 暂空也可展示占位状态
   useEffect(() => {
-    if (!currentPath || !currentHasItems) return;
+    if (!currentPath || welcomeVisible) return;
     setAlive(prev => {
       if (prev.includes(currentPath)) return prev; // 已存在，不动
       if (prev.length >= MAX_ALIVE) {
@@ -54,7 +56,7 @@ function PanelHost() {
       }
       return [...prev, currentPath];
     });
-  }, [currentPath, currentHasItems]);
+  }, [currentPath, welcomeVisible]);
 
   if (welcomeVisible || !currentPath) return null;
 
@@ -72,14 +74,17 @@ function PanelHost() {
 const SCROLL_THRESHOLD = 50;
 
 const Panel = memo(function Panel({ path, active }: { path: string; active: boolean }) {
-  const items = useStore(s => s.chatSessions[path]?.items || EMPTY_ITEMS);
-  const hasMore = useStore(s => s.chatSessions[path]?.hasMore ?? false);
-  const loadingMore = useStore(s => s.chatSessions[path]?.loadingMore ?? false);
+  const chatSession = useStore(s => s.chatSessions[path]);
+  const items = chatSession?.items || EMPTY_ITEMS;
+  const hasMore = chatSession?.hasMore ?? false;
+  const loadingMore = chatSession?.loadingMore ?? false;
   const isSessionStreaming = useStore(s => s.streamingSessions.includes(path));
   const sessionAgentId = useStore(s => s.sessions.find(se => se.path === path)?.agentId ?? null);
+  const chatSearchQuery = useStore(s => s.chatSearchQuery);
   const ref = useRef<HTMLDivElement>(null);
   const contentRef = useRef<HTMLDivElement>(null);
   const messageElementsRef = useRef(new Map<string, HTMLDivElement>());
+  const [searchVisible, setSearchVisible] = useState(false);
   const bottomScroll = useContinuousBottomScroll({
     scrollRef: ref,
     contentRef,
@@ -165,6 +170,70 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
     }
   }, [bottomScroll, items.length]);
 
+  // 处理从左侧搜索传入的搜索查询 - 直接高亮第一个匹配项
+  useEffect(() => {
+    if (!active || !chatSearchQuery || !ref.current || items.length === 0) return;
+
+    // 延迟执行以等待消息加载完成和 DOM 渲染
+    const timer = setTimeout(() => {
+      const container = ref.current;
+      if (!container) return;
+
+      const query = chatSearchQuery.toLowerCase();
+      const walker = document.createTreeWalker(
+        container,
+        NodeFilter.SHOW_TEXT,
+        null
+      );
+
+      let node;
+      let firstMatch: HTMLElement | null = null;
+      let foundText = '';
+
+      while (node = walker.nextNode()) {
+        const text = node.textContent;
+        if (!text || text.trim().length === 0) continue;
+
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes(query)) {
+          foundText = text;
+          // 找到第一个匹配的消息容器
+          let current: HTMLElement | null = node.parentElement;
+          while (current) {
+            const className = current.className;
+            if (className) {
+              const classStr = typeof className === 'string' ? className : Object.keys(className).join(' ');
+              if (classStr.includes('messageGroup')) {
+                firstMatch = current;
+                break;
+              }
+            }
+            current = current.parentElement;
+          }
+          break;
+        }
+      }
+
+      if (firstMatch) {
+        // 高亮第一个匹配项
+        firstMatch.classList.add(styles.chatSearchActive);
+        // 滚动到视图
+        firstMatch.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        // 3秒后清除搜索查询和高亮
+        setTimeout(() => {
+          useStore.getState().setChatSearchQuery(null);
+          firstMatch.classList.remove(styles.chatSearchActive);
+        }, 3000);
+      } else {
+        // 如果没找到匹配项，输出调试信息
+        console.warn(`[ChatSearch] Query "${query}" not found in DOM. Container text sample: ${container.innerText?.slice(0, 200)}`);
+        useStore.getState().setChatSearchQuery(null);
+      }
+    }, 500); // 等待 500ms 让消息加载完成和 DOM 渲染
+
+    return () => clearTimeout(timer);
+  }, [active, chatSearchQuery, items.length]);
+
   // 只有用户自己发出新消息时才恢复 sticky；assistant/tool 流式追加必须尊重用户上滑。
   const prevLen = useRef(items.length);
   useEffect(() => {
@@ -179,6 +248,43 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
     prevLen.current = items.length;
   }, [items, items.length, active, bottomScroll]);
 
+  // Ctrl+F / Cmd+F 打开搜索
+  useEffect(() => {
+    if (!active) return;
+    const handler = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        setSearchVisible(true);
+      }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [active]);
+
+  if (items.length === 0 && active) {
+    // 会话已加载但无消息：显示占位提示，避免主界面一片空白
+    return (
+      <div
+        className={styles.sessionShell}
+        style={{
+          visibility: 'visible',
+          zIndex: 1,
+          pointerEvents: 'auto',
+        }}
+      >
+        <div ref={ref} className={styles.sessionPanel}>
+          <div ref={contentRef} className={styles.sessionMessages}>
+            <div className={styles.sessionEmpty}>
+              {chatSession === undefined
+                ? '正在加载对话记录…'
+                : '暂无对话记录'}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (items.length === 0) return null;
 
   return (
@@ -190,6 +296,15 @@ const Panel = memo(function Panel({ path, active }: { path: string; active: bool
         pointerEvents: active ? 'auto' : 'none',
       }}
     >
+      <ChatSearchBar
+        containerRef={ref as React.RefObject<HTMLDivElement>}
+        visible={searchVisible && active}
+        onClose={() => {
+          setSearchVisible(false);
+          // 关闭搜索时清除搜索查询
+          useStore.getState().setChatSearchQuery(null);
+        }}
+      />
       <div ref={ref} className={styles.sessionPanel}>
         <div ref={contentRef} className={styles.sessionMessages}>
           {hasMore && (

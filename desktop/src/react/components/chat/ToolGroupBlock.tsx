@@ -46,7 +46,7 @@ function memoryMutationSummary(tool: ToolCall): string {
 
 function openMemoryManager() {
   window.sessionStorage?.setItem('hana-settings-focus', 'memory-management');
-  openSettingsModal('agent');
+  openSettingsModal('memory');
   const focus = () => window.dispatchEvent(new Event('hana-focus-memory-management'));
   window.setTimeout(focus, 120);
   window.setTimeout(focus, 450);

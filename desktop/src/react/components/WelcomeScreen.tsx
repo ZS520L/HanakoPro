@@ -344,7 +344,7 @@ function FolderHistory({ cwdHistory, selectedFolder, homeFolder, workspaceFolder
       <div className={styles.folderHistorySectionLabel}>
         {t('input.extraFolders')}
       </div>
-      {workspaceFolders.map(p => {
+      {workspaceFolders.filter(p => !primaryItems.includes(p)).map(p => {
         const name = p.split('/').pop() || p;
         return (
           <div

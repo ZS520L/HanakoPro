@@ -1,8 +1,9 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSettingsStore } from '../store';
-import { t, autoSaveConfig } from '../helpers';
+import { t, autoSaveConfig, formatContext } from '../helpers';
 import { Toggle } from '../widgets/Toggle';
+import { ModelWidget } from '../widgets/ModelWidget';
 import { SettingsSection } from '../components/SettingsSection';
 import { SettingsRow } from '../components/SettingsRow';
 import { NumberInput } from '../components/NumberInput';
@@ -10,6 +11,7 @@ import { COMPRESSION_MODES, BUILTIN_MODE_PROMPTS, DEFAULT_CONTEXT_COMPRESSION } 
 import styles from '../Settings.module.css';
 
 type ContextConfig = typeof DEFAULT_CONTEXT_COMPRESSION;
+type ModelRef = { id: string; provider: string };
 
 function SliderRow({
   label,
@@ -65,7 +67,12 @@ export function ContextTab() {
   // 从 agent config 派生当前值
   const saved: ContextConfig = useMemo(() => {
     const raw = settingsConfig?.context;
-    return { ...DEFAULT_CONTEXT_COMPRESSION, ...raw, protect: { ...DEFAULT_CONTEXT_COMPRESSION.protect, ...raw?.protect } };
+    const merged = { ...DEFAULT_CONTEXT_COMPRESSION, ...raw, protect: { ...DEFAULT_CONTEXT_COMPRESSION.protect, ...raw?.protect } };
+    if (merged.compressionModel === 'utility') merged.compressionModel = 'custom';
+    if (!merged.compressionCustomModel?.id || !merged.compressionCustomModel?.provider) {
+      merged.compressionCustomModel = null;
+    }
+    return merged;
   }, [settingsConfig]);
 
   // 本地 draft 状态
@@ -75,6 +82,7 @@ export function ContextTab() {
   const [mode, setMode] = useState(saved.mode);
   const [customPrompt, setCustomPrompt] = useState(saved.customPrompt);
   const [compressionModel, setCompressionModel] = useState(saved.compressionModel);
+  const [compressionCustomModel, setCompressionCustomModel] = useState<ModelRef | null>(saved.compressionCustomModel);
   const [protectSystem, setProtectSystem] = useState(saved.protect.systemPrompt);
   const [protectToolResults, setProtectToolResults] = useState(saved.protect.recentToolResults);
 
@@ -86,6 +94,7 @@ export function ContextTab() {
     setMode(saved.mode);
     setCustomPrompt(saved.customPrompt);
     setCompressionModel(saved.compressionModel);
+    setCompressionCustomModel(saved.compressionCustomModel);
     setProtectSystem(saved.protect.systemPrompt);
     setProtectToolResults(saved.protect.recentToolResults);
   }, [saved]);
@@ -99,6 +108,7 @@ export function ContextTab() {
         mode,
         customPrompt,
         compressionModel,
+        compressionCustomModel,
         protect: {
           systemPrompt: protectSystem,
           pinnedMemory: true,
@@ -108,12 +118,12 @@ export function ContextTab() {
       };
       autoSaveConfig({ context: next });
     },
-    [enabled, threshold, recentTurns, mode, customPrompt, compressionModel, protectSystem, protectToolResults],
+    [enabled, threshold, recentTurns, mode, customPrompt, compressionModel, compressionCustomModel, protectSystem, protectToolResults],
   );
 
   const modelOptions = useMemo(
     () => [
-      { value: 'utility', label: t('settings.context.modelUtility') },
+      { value: 'custom', label: t('settings.context.modelCustom') },
       { value: 'chat', label: t('settings.context.modelChat') },
     ],
     [],
@@ -193,6 +203,25 @@ export function ContextTab() {
             </div>
           }
         />
+        {compressionModel === 'custom' && (
+          <SettingsRow
+            label={t('settings.context.customModel')}
+            hint={t('settings.context.customModelHint')}
+            control={
+              <div className={styles['context-custom-model-control']}>
+                <ModelWidget
+                  value={compressionCustomModel}
+                  onSelect={(ref) => {
+                    setCompressionCustomModel(ref);
+                    save({ compressionModel: 'custom', compressionCustomModel: ref });
+                  }}
+                  placeholder={t('settings.context.customModelPlaceholder')}
+                  formatContext={formatContext}
+                />
+              </div>
+            }
+          />
+        )}
       </SettingsSection>
 
       {/* ── 压缩模式 ── */}

@@ -25,6 +25,7 @@ import { resolveHanaPiAgentDir, resolveHanaPiProjectDir } from "../shared/hana-r
 import { PluginManager } from "./plugin-manager.js";
 import { PluginDevService } from "./plugin-dev-service.js";
 import { createPluginDevTools } from "./plugin-dev-tools.js";
+import { getProjectIndex } from "./project-index.js";
 import { DefaultResourceLoader, SettingsManager } from "../lib/pi-sdk/index.js";
 import { loadLocale } from "../server/i18n.js";
 
@@ -147,6 +148,7 @@ export class HanaEngine {
       managedCacheRoot: path.join(hanakoHome, "session-files"),
     });
     this._pluginInstallRecords = new PluginInstallRecords({ hanakoHome });
+    this._projectIndexes = new Map();
 
     // ── Core managers ──
     this._prefs = new PreferencesManager({ userDir: this.userDir, agentsDir: this.agentsDir });
@@ -496,6 +498,7 @@ export class HanaEngine {
   async saveSessionTitle(p, t) { return this._sessionCoord.saveSessionTitle(p, t); }
   async clearSessionTitle(p) { return this._sessionCoord.clearSessionTitle(p); }
   async setSessionPinned(p, pinned) { return this._sessionCoord.setSessionPinned(p, pinned); }
+  async getSessionDetails(sessionPath) { return this._sessionCoord.getSessionDetails(sessionPath); }
   createSessionContext() { return this._sessionCoord.createSessionContext(); }
   promoteActivitySession(f, agentId) { return this._sessionCoord.promoteActivitySession(f, agentId); }
   async executeIsolated(prompt, opts) { return this._sessionCoord.executeIsolated(prompt, opts); }
@@ -528,6 +531,42 @@ export class HanaEngine {
 
   getExplicitHomeCwd(agentId) {
     return this._configCoord.getExplicitHomeFolder(agentId || this.currentAgentId) || null;
+  }
+
+  /**
+   * 初始化项目索引（后台异步扫描）
+   * @param {string} workspaceRoot - 工作空间根目录
+   * @returns {Promise<import("./project-index.js").ProjectIndex>}
+   */
+  async initProjectIndex(workspaceRoot) {
+    if (!workspaceRoot) return null;
+    const key = path.resolve(workspaceRoot);
+    let idx = this._projectIndexes.get(key);
+    if (!idx) {
+      idx = getProjectIndex(key);
+      this._projectIndexes.set(key, idx);
+    }
+    // 后台扫描（不阻塞）
+    idx.scan().catch(() => {});
+    return idx;
+  }
+
+  /**
+   * 获取项目概览文本（用于注入 system prompt）
+   * @param {string} workspaceRoot
+   * @returns {string}
+   */
+  getProjectOverview(workspaceRoot) {
+    if (!workspaceRoot) return "";
+    const key = path.resolve(workspaceRoot);
+    let idx = this._projectIndexes.get(key);
+    if (!idx) {
+      idx = getProjectIndex(key);
+      this._projectIndexes.set(key, idx);
+      idx.scan().catch(() => {});
+      return "";
+    }
+    return idx.getOverview();
   }
   _createResourceLoaderOptions(skillsDir) {
     const cwd = resolveHanaPiProjectDir(this.hanakoHome);
@@ -1324,6 +1363,10 @@ export class HanaEngine {
 
     const effectiveAgentDir = opts.agentDir || this.agent.agentDir;
     const effectiveWorkspace = opts.workspace !== undefined ? opts.workspace : this.homeCwd;
+    // 后台触发项目索引扫描（Windsurf Fast Content 模式）
+    if (effectiveWorkspace) {
+      this.initProjectIndex(effectiveWorkspace).catch(() => {});
+    }
     const workspaceFolders = opts.workspaceFolders || [];
     const getSessionPath = opts.getSessionPath || (() => null);
     const fileReadSessionPaths = Array.isArray(opts.fileReadSessionPaths)

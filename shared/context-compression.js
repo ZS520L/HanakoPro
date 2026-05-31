@@ -118,7 +118,8 @@ export const DEFAULT_CONTEXT_COMPRESSION = Object.freeze({
   recentTurnsProtected: 5,
   mode: "rolling-summary",
   customPrompt: "",
-  compressionModel: "utility",
+  compressionModel: "custom",
+  compressionCustomModel: null,
   protect: {
     systemPrompt: true,
     pinnedMemory: true,

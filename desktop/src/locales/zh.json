@@ -81,7 +81,11 @@
     "bridge": "接入社交平台",
     "toggle": "侧边栏",
     "bridgeShort": "接入社交平台",
-    "pinned": "置顶"
+    "pinned": "置顶",
+    "noProject": "未分类",
+    "projects": "项目",
+    "byTime": "按时间",
+    "byProject": "按项目"
   },
   "session": {
     "untitled": "新对话",
@@ -101,6 +105,22 @@
       "loading": "正在读取摘要…",
       "empty": "暂无摘要",
       "loadFailed": "摘要读取失败"
+    },
+    "details": {
+      "title": "会话详情",
+      "open": "会话详情",
+      "loading": "加载中…",
+      "model": "模型",
+      "thinking": "思考强度",
+      "permission": "权限模式",
+      "memory": "记忆",
+      "systemPrompt": "系统提示词",
+      "tools": "工具列表 ({n})"
+    },
+    "search": {
+      "placeholder": "搜索会话…",
+      "clear": "清除搜索",
+      "noResults": "没有找到匹配的会话"
     },
     "archived": {
       "entry": "已归档的聊天",
@@ -476,12 +496,12 @@
     "edit": {
       "running": "✏️ {name} 提笔改字中",
       "done": "✏️ {name} 改好了",
-      "failed": "✏️ {name} 越改越乱了"
+      "failed": "✏️ {name} 编辑失败"
     },
     "edit-diff": {
       "running": "✏️ {name} 提笔改字中",
       "done": "✏️ {name} 改好了",
-      "failed": "✏️ {name} 越改越乱了"
+      "failed": "✏️ {name} 编辑失败"
     },
     "glob": {
       "running": "🔍 {name} 正在找文件",
@@ -649,7 +669,10 @@
       "recentTurnsHint": "最近多少轮消息始终保留原文，不被压缩",
       "compressionModel": "压缩用模型",
       "compressionModelHint": "选择执行压缩摘要的模型",
-      "modelUtility": "辅助模型",
+      "modelCustom": "自选模型",
+      "customModel": "自选模型",
+      "customModelHint": "选择一个专门用于执行上下文压缩的模型",
+      "customModelPlaceholder": "选择压缩模型",
       "modelChat": "对话模型",
       "modeTitle": "压缩模式",
       "modes": {
@@ -937,6 +960,7 @@
       "verify": "验证",
       "verifyConnection": "验证连接",
       "verifySuccess": "验证通过",
+      "verifyAndSaved": "验证通过，已保存",
       "verifyFailed": "验证失败",
       "setupHint": "输入 API Key 以启用此供应商",
       "configInvalid": "该供应商配置损坏，已被暂时跳过。请重新保存配置，或删除后重建。",
@@ -1058,6 +1082,13 @@
       "sectionTitle": "记忆",
       "title": "记忆开关",
       "needsUtilityModel": "需要先在「模型」中配置 Utility 模型",
+      "guideEyebrow": "记忆玩法",
+      "guideTitle": "用记忆调教你的专属助手",
+      "guideSystemPrompt": "记忆会注入系统提示词中，当 Agent 行动不符合预期时，可以增加记忆进行矫正，比修改完整系统提示词更高效。",
+      "guideMasterPlayer": "记忆让你的助手更懂你，当你意识到记忆的重要性，并懂得如何维护记忆，你就是大神玩家了，加油！",
+      "guideVideoLabel": "教程视频",
+      "guideVideoTitle": "HanakoPro：上限最高的 Agent IDE 工具！",
+      "guideVideoAction": "干货满满，立即观看",
       "compiled": "当下记忆",
       "compiledHint": "助手记住的关于你的，重要的与近期的事",
       "compiledView": "查看当下记忆",
@@ -1096,7 +1127,15 @@
         "importing": "正在导入...",
         "empty": "还没有记忆",
         "invalidFile": "无效的记忆文件",
-        "activeOnly": "请先将此助手设为主助手"
+        "activeOnly": "请先将此助手设为主助手",
+        "edit": "编辑",
+        "save": "保存",
+        "saving": "保存中...",
+        "editSuccess": "记忆已更新",
+        "factRequired": "记忆内容不能为空",
+        "factPlaceholder": "记忆内容",
+        "tagsPlaceholder": "标签，用逗号分隔",
+        "timePlaceholder": "时间，可留空"
       },
       "unknownDate": "未知日期",
       "threshold": {
@@ -1924,13 +1963,13 @@
     "compatFactsCorrupted": "facts.db 损坏已备份，将重建空库",
     "defaultChannelName": "工作群",
     "defaultChannelDesc": "工作协调频道，所有成员在这里沟通日常事务。",
-    "memorySearchLabel": "搜索记忆",
-    "memorySearchDesc": "搜索记忆库。当你对某件事拿不准、觉得之前聊过但想不起细节、或者需要更多上下文时使用。输入自然语言查询和可选的标签过滤。结果包含匹配的元事实和对应时间。",
-    "memorySearchQueryDesc": "搜索查询，用自然语言描述你想找的内容",
+    "memorySearchLabel": "搜索置顶记忆",
+    "memorySearchDesc": "搜索置顶记忆。置顶记忆是当前仍然启用的长期偏好与关键事实，已直接注入系统提示词；当你需要确认、修改或移除某条置顶记忆时使用。",
+    "memorySearchQueryDesc": "搜索查询，用自然语言描述你想找的置顶记忆",
     "memorySearchTagsDesc": "标签过滤，输入 2~5 个关键词标签来精确匹配。例如 [\"巧克力\", \"食物偏好\"]",
     "memorySearchDateFromDesc": "起始日期，格式 YYYY-MM-DD",
     "memorySearchDateToDesc": "结束日期，格式 YYYY-MM-DD",
-    "memorySearchEmpty": "记忆库里没有找到相关内容。",
+    "memorySearchEmpty": "置顶记忆里没有找到相关内容。",
     "memorySearchError": "记忆搜索出错: {msg}",
     "fallbackUserName": "用户",
     "uploadFailed": "文件导入失败",
@@ -1943,6 +1982,7 @@
   "main": {
     "tray": {
       "show": "显示 Hanako",
+      "restart": "重启服务",
       "settings": "设置",
       "quit": "退出"
     },
@@ -2274,6 +2314,7 @@
   "error.serverAuthFailed": "认证失败",
   "error.unknown": "发生了未知错误",
   "error.regionUnavailable": "此区域暂时无法显示",
+  "error.autoRetry": "正在自动恢复…",
   "status.reconnecting": "正在重连...",
   "status.disconnected": "连接已断开",
   "status.reconnect": "重新连接",

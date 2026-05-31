@@ -26,6 +26,7 @@ export type PromptComposerToolParameterOverride = {
 export type PromptComposerToolOverride = {
   name: string;
   description?: string;
+  enabled?: boolean;
   parameters: PromptComposerToolParameterOverride[];
 };
 

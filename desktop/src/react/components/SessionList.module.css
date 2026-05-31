@@ -45,6 +45,17 @@
     min-width: 0;
 }
 
+.sessionItemSnippet {
+    font-size: 0.65rem;
+    line-height: 1.3;
+    color: var(--text-muted);
+    opacity: 0.65;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    margin-top: 1px;
+}
+
 .sessionItemActive .sessionItemTitle {
     color: var(--accent);
     font-weight: 600;
@@ -306,6 +317,165 @@
     flex-shrink: 0;
 }
 
+/* ── View mode toggle ── */
+.sessionViewModeToggle {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin: 0 6px 8px;
+    padding: 2px;
+    background: var(--bg-subtle, rgba(var(--accent-rgb, 100, 100, 100), 0.04));
+    border-radius: var(--radius-sm);
+}
+.sessionViewModeBtn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex: 1;
+    padding: 5px 8px;
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.7rem;
+    font-weight: 500;
+    transition: all var(--duration-fast);
+    white-space: nowrap;
+}
+.sessionViewModeBtn:hover {
+    color: var(--text);
+    background: rgba(var(--accent-rgb), 0.06);
+}
+.sessionViewModeBtnActive {
+    color: var(--accent);
+    background: var(--bg);
+    box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+    font-weight: 600;
+}
+.sessionViewModeBtn svg {
+    flex-shrink: 0;
+}
+.sessionViewModeBtn span {
+    font-size: 0.68rem;
+}
+
+/* ── Project section (collapsible) ── */
+.projectSection {
+    margin: 0;
+    padding: 0;
+}
+.projectSectionHeader {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    width: 100%;
+    padding: 6px var(--space-sm);
+    background: none;
+    border: none;
+    border-radius: var(--radius-sm);
+    color: var(--text);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.75rem;
+    font-weight: 600;
+    transition: background var(--duration-fast);
+    user-select: none;
+}
+.projectSectionHeader:hover {
+    background: rgba(var(--accent-rgb), 0.06);
+}
+.projectSectionChevron {
+    flex-shrink: 0;
+    transition: transform var(--duration-fast) var(--ease-out);
+}
+.chevronCollapsed {
+    transform: rotate(-90deg);
+}
+.projectSectionIcon {
+    flex-shrink: 0;
+    opacity: 0.7;
+}
+.projectSectionTitle {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: left;
+}
+.projectSectionCount {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 16px;
+    padding: 0 4px;
+    border-radius: 8px;
+    background: rgba(var(--accent-rgb), 0.1);
+    color: var(--accent);
+    font-size: 0.6rem;
+    font-weight: 600;
+}
+.projectSectionBody {
+    padding: 0;
+}
+
+/* ── Project sub-section (date grouping) ── */
+
+.projectSubSection {
+    /* wrapper for collapsible sub-group */
+}
+
+.projectSubHeader {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    width: 100%;
+    padding: 4px 12px 4px 14px;
+    background: none;
+    border: none;
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 500;
+    cursor: pointer;
+    user-select: none;
+    transition: background 100ms;
+}
+
+.projectSubHeader:hover {
+    background: var(--overlay-light);
+}
+
+.projectSubChevron {
+    flex-shrink: 0;
+    transition: transform 150ms;
+}
+
+.projectSubTitle {
+    flex: 1;
+    text-align: left;
+    opacity: 0.7;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+}
+
+.projectSubCount {
+    flex-shrink: 0;
+    font-size: 0.65rem;
+    background: var(--overlay-light);
+    padding: 1px 6px;
+    border-radius: 8px;
+    opacity: 0.6;
+}
+
+.projectSubBody {
+    padding: 0;
+}
+
 .sessionSummaryCard {
     position: fixed;
     z-index: 9998;
@@ -376,4 +546,215 @@
     padding: var(--space-lg) var(--space-sm);
     color: var(--text-muted);
     font-size: 0.78rem;
+}
+
+/* ── 搜索栏 ── */
+.sessionSearchBar {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin: 0 6px 8px;
+    padding: 0 8px;
+    height: 28px;
+    background: var(--bg-secondary, rgba(0,0,0,0.04));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    transition: border-color var(--duration-fast);
+}
+
+.sessionSearchBar:focus-within {
+    border-color: rgba(var(--accent-rgb), 0.4);
+}
+
+.sessionSearchIcon {
+    flex-shrink: 0;
+    color: var(--text-muted);
+    opacity: 0.5;
+    margin-right: 6px;
+}
+
+.sessionSearchInput {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: inherit;
+    font-size: 0.72rem;
+    color: var(--text);
+    outline: none;
+    padding: 0;
+    min-width: 0;
+}
+
+.sessionSearchInput::placeholder {
+    color: var(--text-muted);
+    opacity: 0.55;
+}
+
+.sessionSearchClear {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 0.6rem;
+    cursor: pointer;
+    border-radius: 50%;
+    transition: background var(--duration-fast);
+    margin-left: 4px;
+}
+
+.sessionSearchClear:hover {
+    background: var(--hover);
+}
+
+/* ── 会话详情弹窗 ── */
+.sessionDetailsOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0, 0, 0, 0.35);
+}
+
+.sessionDetailsDialog {
+    width: min(720px, calc(100vw - 40px));
+    max-height: min(80vh, 640px);
+    display: flex;
+    flex-direction: column;
+    background: var(--bg-card, var(--bg));
+    border: 1px solid var(--overlay-light);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.18), 0 2px 8px rgba(0, 0, 0, 0.08);
+    overflow: hidden;
+}
+
+.sessionDetailsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.sessionDetailsHeader h3 {
+    margin: 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    color: var(--text);
+}
+
+.sessionDetailsClose {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    font-size: 1rem;
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    transition: background var(--duration-fast);
+}
+
+.sessionDetailsClose:hover {
+    background: var(--hover);
+}
+
+.sessionDetailsBody {
+    padding: 16px;
+    overflow-y: auto;
+    flex: 1;
+}
+
+.sessionDetailsLoading,
+.sessionDetailsError {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    padding: 24px 0;
+}
+
+.sessionDetailsError {
+    color: var(--danger, #c55);
+}
+
+.sessionDetailsGrid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.sessionDetailsField {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.sessionDetailsLabel {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sessionDetailsValue {
+    font-size: 0.82rem;
+    color: var(--text);
+    font-weight: 500;
+}
+
+.sessionDetailsSection {
+    margin-bottom: 14px;
+}
+
+.sessionDetailsSection h4 {
+    margin: 0 0 6px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.sessionDetailsPrompt {
+    margin: 0;
+    padding: 10px 12px;
+    background: var(--bg-secondary, #f5f0ea);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 0.68rem;
+    line-height: 1.5;
+    color: var(--text);
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.sessionDetailsToolList {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.sessionDetailsToolChip {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    font-size: 0.68rem;
+    color: var(--text);
+    background: color-mix(in srgb, var(--accent) 8%, var(--bg-card));
+    border: 1px solid rgba(var(--accent-rgb), 0.15);
+    border-radius: 999px;
+    font-family: ui-monospace, "SF Mono", "Cascadia Code", monospace;
 }

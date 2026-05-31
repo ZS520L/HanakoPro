@@ -32,6 +32,8 @@ export interface UiSlice {
   settingsModal: SettingsModalState;
   /** 频道创建弹窗是否可见 */
   channelCreateOverlayVisible: boolean;
+  /** 聊天搜索查询（从左侧会话搜索传入） */
+  chatSearchQuery: string | null;
   setSidebarOpen: (open: boolean) => void;
   setSidebarAutoCollapsed: (collapsed: boolean) => void;
   setJianOpen: (open: boolean) => void;
@@ -49,6 +51,7 @@ export interface UiSlice {
   closeMediaViewer: () => void;
   toggleSidebar: () => void;
   toggleJian: () => void;
+  setChatSearchQuery: (query: string | null) => void;
 }
 
 export const createUiSlice = (
@@ -71,6 +74,7 @@ export const createUiSlice = (
   mediaViewer: null,
   settingsModal: { open: false, activeTab: 'agent' },
   channelCreateOverlayVisible: false,
+  chatSearchQuery: null,
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setSidebarAutoCollapsed: (collapsed) => set({ sidebarAutoCollapsed: collapsed }),
   setJianOpen: (open) => set({ jianOpen: open }),
@@ -90,4 +94,5 @@ export const createUiSlice = (
   closeMediaViewer: () => set({ mediaViewer: null }),
   toggleSidebar: () => set((s) => ({ sidebarOpen: !s.sidebarOpen })),
   toggleJian: () => set((s) => ({ jianOpen: !s.jianOpen })),
+  setChatSearchQuery: (query) => set({ chatSearchQuery: query }),
 });

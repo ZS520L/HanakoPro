@@ -6,6 +6,7 @@ export type ToolDescriptionParameterOverride = {
 export type ToolDescriptionOverride = {
   name: string;
   description?: string;
+  enabled?: boolean;
   parameters: ToolDescriptionParameterOverride[];
 };
 

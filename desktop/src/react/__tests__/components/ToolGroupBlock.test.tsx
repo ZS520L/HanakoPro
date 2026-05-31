@@ -184,7 +184,7 @@ describe('ToolGroupBlock', () => {
 
     screen.getByRole('button', { name: /Manage/ }).click();
 
-    expect(useStore.getState().settingsModal).toEqual({ open: true, activeTab: 'agent' });
+    expect(useStore.getState().settingsModal).toEqual({ open: true, activeTab: 'memory' });
     expect(window.sessionStorage.getItem('hana-settings-focus')).toBe('memory-management');
     expect(dispatchSpy).not.toHaveBeenCalledWith(expect.objectContaining({ type: 'hana-focus-memory-management' }));
   });

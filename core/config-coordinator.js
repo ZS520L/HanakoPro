@@ -412,6 +412,15 @@ export class ConfigCoordinator {
     if (refreshDescription) agent.updateConfig(partial, { refreshDescription: true });
     else agent.updateConfig(partial);
 
+    // promptComposer.toolOverrides 变更时自动同步到当前 agent 的所有活跃 session
+    if (partial.promptComposer?.toolOverrides) {
+      const sessionCoord = this._d.getSessionCoordinator();
+      if (sessionCoord) {
+        const targetAgentId = agentId || this._d.getActiveAgentId();
+        sessionCoord.syncToolOverrides(targetAgentId);
+      }
+    }
+
     // 模型切换只在焦点 agent 时生效。migration #5 之后 models.chat 必为
     // {id, provider} 对象；缺 provider 直接忽略并告警（调用方应传完整复合键）。
     if (isFocusAgent && partial.models?.chat) {

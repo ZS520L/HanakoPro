@@ -23,7 +23,7 @@ export const ThinkingBlock = memo(function ThinkingBlock({ content, sealed }: Pr
           <>{t('thinking.active')}<span className={styles.thinkingDots} /></>
         )}
       </summary>
-      {open && content && (
+      {content && (
         <div className={styles.thinkingBlockBody}>{content}</div>
       )}
     </details>

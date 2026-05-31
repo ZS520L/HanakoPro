@@ -258,8 +258,17 @@
     color: var(--accent);
 }
 
-.thinking-pill.active svg {
-    filter: drop-shadow(0 0 2px rgba(var(--accent-rgb), 0.5));
+/* 思考强度档位：不同发光强度 */
+.thinking-pill.active[data-level="auto"] svg {
+    filter: drop-shadow(0 0 2px rgba(var(--accent-rgb), 0.35));
+}
+
+.thinking-pill.active[data-level="high"] svg {
+    filter: drop-shadow(0 0 3px rgba(var(--accent-rgb), 0.5));
+}
+
+.thinking-pill.active[data-level="xhigh"] svg {
+    filter: drop-shadow(0 0 4px rgba(var(--accent-rgb), 0.7));
 }
 
 .thinking-selector.open .thinking-pill {

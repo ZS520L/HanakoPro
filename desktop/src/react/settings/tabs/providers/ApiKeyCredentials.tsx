@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSettingsStore, type ProviderSummary } from '../../store';
 import { hanaFetch } from '../../api';
 import { invalidateConfigCache } from '../../../hooks/use-config';
@@ -53,6 +53,7 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
       api,
     });
     if (!plan.shouldSave) return;
+    setConnHint(null);
     btn.classList.add(styles['spinning']);
     try {
       if (plan.shouldVerify) {
@@ -63,9 +64,13 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
         });
         const testData = await testRes.json();
         if (!testData.ok) {
+          setConnStatus('fail');
+          showConnHint(t('settings.providers.verifyFailed'), false);
           showToast(t('settings.providers.verifyFailed'), 'error');
           return;
         }
+        setConnStatus('ok');
+        showConnHint(t('settings.providers.verifyAndSaved'), true);
       }
       await hanaFetch('/api/config', {
         method: 'PUT',
@@ -104,8 +109,18 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
     }
   };
 
+  const [connHint, setConnHint] = useState<{ msg: string; ok: boolean } | null>(null);
+  const connHintTimer = useRef<ReturnType<typeof setTimeout>>(null);
+
+  const showConnHint = (msg: string, ok: boolean) => {
+    if (connHintTimer.current) clearTimeout(connHintTimer.current);
+    setConnHint({ msg, ok });
+    connHintTimer.current = setTimeout(() => setConnHint(null), 4000);
+  };
+
   const verifyOnly = async (btn: HTMLButtonElement) => {
     setConnStatus('testing');
+    setConnHint(null);
     btn.classList.add(styles['spinning']);
     try {
       const testRes = await hanaFetch('/api/providers/test', {
@@ -115,9 +130,11 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
       });
       const testData = await testRes.json();
       setConnStatus(testData.ok ? 'ok' : 'fail');
+      showConnHint(testData.ok ? t('settings.providers.verifySuccess') : t('settings.providers.verifyFailed'), testData.ok);
       showToast(testData.ok ? t('settings.providers.verifySuccess') : t('settings.providers.verifyFailed'), testData.ok ? 'success' : 'error');
     } catch {
       setConnStatus('fail');
+      showConnHint(t('settings.providers.verifyFailed'), false);
       showToast(t('settings.providers.verifyFailed'), 'error');
     } finally {
       btn.classList.remove(styles['spinning']);
@@ -131,7 +148,7 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
         <div className={styles['pv-cred-key-row']}>
           <KeyInput
             value={keyVal}
-            onChange={(v) => { setKeyVal(v); setKeyEdited(true); setConnStatus('idle'); }}
+            onChange={(v) => { setKeyVal(v); setKeyEdited(true); setConnStatus('idle'); setConnHint(null); }}
             placeholder={isPresetSetup ? t('settings.providers.setupHint') : ''}
           />
           <button
@@ -145,13 +162,29 @@ export function ApiKeyCredentials({ providerId, summary, providerConfig, isPrese
               }
             }}
           >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
-              <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
-            </svg>
+            {connStatus === 'ok' ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12" /></svg>
+            ) : connStatus === 'fail' ? (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" /></svg>
+            ) : (
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+            )}
           </button>
         </div>
       </div>
+      {connHint && (
+        <div className={`${styles['pv-conn-hint']} ${connHint.ok ? styles['ok'] : styles['fail']}`}>
+          {connHint.ok ? (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" /><polyline points="22 4 12 14.01 9 11.01" /></svg>
+          ) : (
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" /></svg>
+          )}
+          <span>{connHint.msg}</span>
+        </div>
+      )}
       <div className={styles['pv-cred-row']}>
         <span className={styles['pv-cred-label']}>Base URL</span>
         <div className={styles['pv-cred-url-row']}>

@@ -581,6 +581,38 @@ export function createConfigRoute(engine) {
     }
   });
 
+  route.put("/memories/:id", async (c) => {
+    let tempStore = null;
+    try {
+      const agent = resolveAgentStrict(engine, c);
+      const id = Number(c.req.param("id"));
+      if (!Number.isInteger(id) || id <= 0) return c.json({ error: "invalid memory id" }, 400);
+      const body = await safeJson(c);
+      const fact = typeof body.fact === "string" ? body.fact.trim() : "";
+      if (!fact) return c.json({ error: "fact must be a non-empty string" }, 400);
+      if (body.tags !== undefined && !Array.isArray(body.tags)) return c.json({ error: "tags must be an array" }, 400);
+      if (body.time !== undefined && body.time !== null && typeof body.time !== "string") {
+        return c.json({ error: "time must be a string or null" }, 400);
+      }
+      const { store, isTemp } = getStoreForAgent(agent.id);
+      if (isTemp) tempStore = store;
+      const updated = store.update(id, {
+        fact,
+        tags: body.tags,
+        time: body.time,
+      });
+      if (!updated) return c.json({ error: "memory not found" }, 404);
+      debugLog()?.log("api", `PUT /api/memories/${id} agent=${agent.id}`);
+      await engine.updateConfig({}, { agentId: agent.id });
+      return c.json({ ok: true, memory: updated });
+    } catch (err) {
+      if (err instanceof AgentNotFoundError) return c.json({ error: err.message }, 404);
+      return c.json({ error: err.message }, 500);
+    } finally {
+      tempStore?.close();
+    }
+  });
+
   route.delete("/memories/:id", async (c) => {
     let tempStore = null;
     try {

@@ -23,13 +23,16 @@ import { realPath, isSensitivePath, assertNoSymlinksSync } from "../utils/path-s
 function isInsidePath(target, baseDir) {
   const base = realPath(baseDir);
   if (!base) return false;
+  // 确保 base 恰好以一个 path.sep 结尾（realPath 对根目录返回 "D:\"，
+  // 对子目录返回 "D:\foo" 不带尾部分隔符，直接加 path.sep 会变成 "D:\\"）
+  const basePrefix = base.endsWith(path.sep) ? base : base + path.sep;
   const resolved = realPath(target);
-  if (resolved) return resolved === base || resolved.startsWith(base + path.sep);
+  if (resolved) return resolved === base || resolved.startsWith(basePrefix);
   // 路径不存在（mkdir / rename 目标）：解析父目录 + 保留 basename
   const parentResolved = realPath(path.dirname(target));
   if (!parentResolved) return false;
   const full = path.join(parentResolved, path.basename(target));
-  return full === base || full.startsWith(base + path.sep);
+  return full === base || full.startsWith(basePrefix);
 }
 
 /** 校验 dir 覆盖：仅允许 engine 已知的根目录（解析 symlink 后比较） */
@@ -50,7 +53,8 @@ function isApprovedDir(dir, engine) {
   return approved.some(root => {
     const r = realPath(root);
     if (!r) return false;
-    return resolved === r || resolved.startsWith(r + path.sep);
+    const prefix = r.endsWith(path.sep) ? r : r + path.sep;
+    return resolved === r || resolved.startsWith(prefix);
   });
 }
 
@@ -85,27 +89,12 @@ async function listWorkspaceFiles(dir) {
     if (err.code === "ENOENT") return [];
     throw err;
   }
-  const items = await Promise.all(
-    entries
-      .filter(e => !e.name.startsWith("."))
-      .map(async (e) => {
-        const fullPath = path.join(dir, e.name);
-        try {
-          const stat = await fs.promises.stat(fullPath);
-          return {
-            name: e.name,
-            size: stat.size,
-            mtime: stat.mtime.toISOString(),
-            isDir: e.isDirectory(),
-          };
-        } catch (err) {
-          // ENOENT = 文件在 readdir 后被删除，正常跳过；其他错误也跳过单项不影响整体
-          if (err.code !== "ENOENT") console.warn(`[desk] stat failed for ${e.name}: ${err.message}`);
-          return null;
-        }
-      })
-  );
-  return items.filter(Boolean).sort((a, b) => new Date(b.mtime) - new Date(a.mtime));
+  // readdir + withFileTypes 已拿到文件名和 isDir，不需要逐文件 stat
+  // （避免大目录下 O(n) 次磁盘 I/O 导致卡死）
+  return entries
+    .filter(e => !e.name.startsWith("."))
+    .map(e => ({ name: e.name, isDir: e.isDirectory() }))
+    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
 }
 
 const WORKSPACE_SEARCH_SKIP_DIRS = new Set([

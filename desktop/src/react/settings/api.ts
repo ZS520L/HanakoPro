@@ -6,14 +6,24 @@ import { useSettingsStore } from './store';
 import {
   appendConnectionAuth,
   buildConnectionUrl,
+  hasServerConnection,
   requireServerConnection,
 } from '../services/server-connection';
 
 const DEFAULT_TIMEOUT = 30_000;
 
+/**
+ * 构建带认证的 Hana Server URL（设置窗口版本）
+ *
+ * 若 server 连接尚未就绪，返回原始 path 作为 fallback，避免渲染崩溃。
+ */
 export function hanaUrl(path: string): string {
+  const state = useSettingsStore.getState();
+  if (!hasServerConnection(state)) {
+    return path;
+  }
   const connection = requireServerConnection(
-    useSettingsStore.getState(),
+    state,
     `settings hanaUrl ${path}: server connection not ready`,
   );
   return buildConnectionUrl(connection, path, { includeTokenQuery: true });

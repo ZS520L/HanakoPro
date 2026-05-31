@@ -123,7 +123,7 @@ export function DeskSection({
   useDeskTreeDirectoryWatcher(deskBasePath, deskExpandedPaths);
 
   const [sortMode, setSortMode] = useState<SortMode>(
-    () => (localStorage.getItem(DESK_SORT_KEY) as SortMode) || 'mtime-desc',
+    () => (localStorage.getItem(DESK_SORT_KEY) as SortMode) || 'name-asc',
   );
   const [typeFilters, setTypeFilters] = useState<FileTypeFilter[]>(getInitialTypeFilters);
 

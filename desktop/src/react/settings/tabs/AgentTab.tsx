@@ -8,30 +8,25 @@ import { SelectWidget } from '@/ui';
 import { browseAgent, switchToAgent, loadSettingsConfig, loadAgents } from '../actions';
 import { AgentCardStack } from './agent/AgentCardStack';
 import { YuanSelector } from './agent/YuanSelector';
-import { MemorySection } from './agent/AgentMemory';
 import { AgentToolsSection } from './agent/AgentToolsSection';
 import { CharacterCardPreviewOverlay, type CharacterCardPlan } from '../overlays/CharacterCardPreviewOverlay';
 import styles from '../Settings.module.css';
 
 export function AgentTab() {
   const {
-    agents, currentAgentId, settingsAgentId, settingsConfig, currentPins,
-    globalModelsConfig,
+    agents, currentAgentId, settingsAgentId, settingsConfig,
   } = useSettingsStore(
     useShallow(s => ({
       agents: s.agents,
       currentAgentId: s.currentAgentId,
       settingsAgentId: s.settingsAgentId,
       settingsConfig: s.settingsConfig,
-      currentPins: s.currentPins,
-      globalModelsConfig: s.globalModelsConfig,
     }))
   );
   const showToast = useSettingsStore(s => s.showToast);
   const set = useSettingsStore(s => s.set);
   const getSettingsAgentId = useSettingsStore(s => s.getSettingsAgentId);
 
-  const hasUtilityModel = !!(globalModelsConfig?.models?.utility && globalModelsConfig?.models?.utility_large);
   const selectedSettingsAgentId = settingsAgentId || currentAgentId;
 
   const [agentName, setAgentName] = useState('');
@@ -51,7 +46,6 @@ export function AgentTab() {
   }, [settingsConfig]);
 
 
-  const isViewingOther = selectedSettingsAgentId !== currentAgentId;
   const currentYuan = settingsConfig?.agent?.yuan || 'hanako';
 
   // 用 "provider/id" 复合键作为 SelectWidget 的 value，区分多 provider 下同名模型。
@@ -89,7 +83,6 @@ export function AgentTab() {
   }, [availableModels, currentModel]);
   const currentModelUnavailable = !!currentModel && !availableModels.some(m => `${m.provider}/${m.id}` === currentModel);
 
-  const memoryEnabled = settingsConfig?.memory?.enabled !== false;
   const hasAvailableToolsField = !!settingsConfig && Object.prototype.hasOwnProperty.call(settingsConfig, 'availableTools');
   const availableTools = hasAvailableToolsField ? settingsConfig?.availableTools : undefined;
 
@@ -329,15 +322,6 @@ export function AgentTab() {
           </button>
         </div>
       </section>
-
-      {/* 以下是本 phase 需要改造的部分：Memory / Tools */}
-
-      <MemorySection
-        hasUtilityModel={hasUtilityModel}
-        memoryEnabled={memoryEnabled}
-        isViewingOther={isViewingOther}
-        currentPins={currentPins}
-      />
 
       {/* 默认关闭 update_settings 和 dm，与后端 DEFAULT_DISABLED_TOOL_NAMES 保持同步 */}
       <AgentToolsSection

@@ -670,6 +670,7 @@ export async function applyFolder(folder: string): Promise<void> {
   if (!normalized) return;
   useStore.setState((s: any) => ({
     selectedFolder: normalized,
+    homeFolder: normalized,
     cwdHistory: mergeWorkspaceHistory(s.cwdHistory, [normalized]),
     workspaceFolders: (s.workspaceFolders || []).filter((p: string) => normalizeFolder(p) !== normalized),
   }));
@@ -681,6 +682,19 @@ export async function applyFolder(folder: string): Promise<void> {
     useStore.getState().requestInputFocus();
   }
   await persistWorkspaceHistory(normalized);
+  // 同步更新 Agent 默认工作目录，统一两个概念
+  const agentId = s.currentAgentId;
+  if (agentId && hasServerConnection(s)) {
+    try {
+      await hanaFetch(`/api/agents/${agentId}/config`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ desk: { home_folder: normalized } }),
+      });
+    } catch (err) {
+      console.error('[workspace] save home_folder to agent config failed:', err);
+    }
+  }
   await loadDeskFiles(useStore.getState().deskCurrentPath || '', normalized);
 }
 

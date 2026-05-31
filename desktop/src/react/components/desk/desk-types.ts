@@ -36,20 +36,16 @@ function tr(key: string, vars?: Record<string, string | number>): string {
 
 export function getSortOptions(): Array<{ key: SortMode; label: string }> {
   return [
-    { key: 'mtime-desc', label: tr('desk.sort.mtime') },
     { key: 'name-asc', label: tr('desk.sort.nameAsc') },
     { key: 'name-desc', label: tr('desk.sort.nameDesc') },
-    { key: 'size-desc', label: tr('desk.sort.size') },
     { key: 'type-asc', label: tr('desk.sort.type') },
   ];
 }
 
 export function getSortShort(mode: string): string {
   const map: Record<string, string> = {
-    'mtime-desc': tr('desk.sort.mtimeShort'),
     'name-asc': tr('desk.sort.nameAscShort'),
     'name-desc': tr('desk.sort.nameDescShort'),
-    'size-desc': tr('desk.sort.sizeShort'),
     'type-asc': tr('desk.sort.typeShort'),
   };
   return map[mode] || tr('desk.sort.label');

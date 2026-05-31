@@ -15,6 +15,7 @@ export const DEFAULT_PROMPT_BLOCK_ORDER = [
   "action-safety",
   "web-tool-priority",
   "settings-changes",
+  "mcp-config",
   "proactive-skill-acquisition",
   "team",
   "user-profile",
@@ -41,6 +42,7 @@ export const BUILTIN_PROMPT_BLOCKS = [
   { id: "action-safety", label: "操作安全", labelEn: "Action Safety" },
   { id: "web-tool-priority", label: "网页工具优先级", labelEn: "Web Tool Priority" },
   { id: "settings-changes", label: "设置修改", labelEn: "Settings Changes" },
+  { id: "mcp-config", label: "MCP 配置", labelEn: "MCP Configuration" },
   { id: "proactive-skill-acquisition", label: "主动技能获取", labelEn: "Proactive Skill Acquisition" },
   { id: "team", label: "团队", labelEn: "Team" },
   { id: "user-profile", label: "用户档案", labelEn: "User Profile" },
@@ -282,6 +284,7 @@ function normalizeToolOverrides(value) {
     result.push({
       name,
       description: Object.prototype.hasOwnProperty.call(item, "description") ? normalizeText(item.description) : undefined,
+      enabled: !Object.prototype.hasOwnProperty.call(item, "enabled") || item.enabled !== false,
       parameters,
     });
   }
